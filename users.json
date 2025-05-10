@@ -104,5 +104,34 @@
         "role": "driver_pending",
         "coins": 5,
         "full_name": "Haydovchi sifatida ro'yxatdan o'tish"
+    },
+    "1707195733": {
+        "role": "driver_pending",
+        "coins": 5,
+        "full_name": "MUSOXON",
+        "phone": ""
+    },
+    "368464003": {
+        "role": "driver_pending",
+        "coins": 5,
+        "full_name": "Saydullo 97 552 66 66",
+        "phone": ""
+    },
+    "1451298305": {
+        "role": "driver_pending",
+        "coins": 5,
+        "full_name": "@@АКРАМЖОН@@",
+        "phone": ""
+    },
+    "550487251": {
+        "role": "driver_pending",
+        "coins": 5,
+        "full_name": "Haydovchi sifatida ro'yxatdan o'tish"
+    },
+    "164210882": {
+        "role": "driver",
+        "coins": 5,
+        "full_name": "Haydovchi sifatida ro'yxatdan o'tish",
+        "phone": "+998902790444"
     }
 }
