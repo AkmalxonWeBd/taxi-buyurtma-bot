@@ -121,5 +121,35 @@
         "status": "waiting",
         "channel_message": "Yangi yo'lovchilar taklifi:\nKim yubordi: Akmalxon\nNechta yo'lovchi: 4\nQayerga: Namangandan Toshkentga\n\nYo'lovchini olish uchun ushbu xabarga javob bering (reply) va 'olaman' deb yozing.",
         "message_id": 669001
+    },
+    "offer_9": {
+        "user_id": 8197347743,
+        "full_name": "Akmalxon",
+        "phone": "109182383",
+        "passenger_count": 1,
+        "destination": "Ovozli xabar orqali",
+        "time": "Tez orada",
+        "contact": "109182383",
+        "comment": "",
+        "created_at": "2025-05-10 22:14:29",
+        "status": "waiting",
+        "voice_file_id": "AwACAgIAAyEFAASgw-5cAANfaB-JYyFuLFI90hPuTo4lygxw-GAAAmduAAKT8wFJao8fQPs8wVI2BA",
+        "message_id": 98,
+        "info_message_id": 99
+    },
+    "offer_10": {
+        "user_id": 8197347743,
+        "full_name": "Akmalxon",
+        "phone": "+998901234567",
+        "passenger_count": 1,
+        "destination": "Ovozli xabar orqali",
+        "time": "Tez orada",
+        "contact": "+998901234567",
+        "comment": "",
+        "created_at": "2025-05-10 22:15:20",
+        "status": "waiting",
+        "voice_file_id": "AwACAgIAAyEFAASgw-5cAANkaB-JpRKaxr-q4jnUFCz7u4LF-OsAAmpuAAKT8wFJwgjnoXlzZsg2BA",
+        "message_id": 102,
+        "info_message_id": 103
     }
 }

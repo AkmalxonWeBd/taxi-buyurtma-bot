@@ -1,12 +1,12 @@
 {
     "2025-05-10": {
         "new_drivers": 15,
-        "new_offers": 8,
+        "new_offers": 10,
         "fake_offers": 1
     },
     "total": {
         "new_drivers": 15,
-        "new_offers": 8,
+        "new_offers": 10,
         "fake_offers": 1
     }
 }

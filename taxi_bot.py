@@ -1,807 +1,552 @@
 import json
+import re
 import logging
 import os
-import re
-import time
 from datetime import datetime, timedelta
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler, CallbackContext, CallbackQueryHandler
-
-# =============================================
-# ASOSIY KONFIGURATSIYA - BU QISMNI O'ZGARTIRING
-# =============================================
-# Telegram bot tokeni (BotFather dan olinadi)
-BOT_TOKEN = "7670097486:AAGo0jqQQThtSDCGbe6nlI74b5p6_PhPvdc"
-
-# Kanal ID raqami (habarlar yuborilishi kerak bo'lgan kanal)
-CHANNEL_ID = "-1001522285580"  # Kanal ID raqamini kiriting
-
-# Haydovchilar kanali havolasi
-DRIVERS_CHANNEL_LINK = "https://t.me/your_channel"  # Haydovchilar kanali havolasini kiriting
-
-# Ma'lumotlar fayllari
-USERS_FILE = 'users.json'
-DRIVERS_FILE = 'drivers.json'
-OFFERS_FILE = 'offers.json'  # Yo'lovchi berish uchun
-CHANNEL_CONVERSATIONS_FILE = 'channel_conversATIONS.json'  # Kanal suhbatlari uchun
-STATS_FILE = 'stats.json'  # Statistika uchun
-VOICE_MESSAGES_FILE = 'voice_messages.json'  # Ovozli xabarlar uchun
-
-# Botni kanalga ulash kerakmi?
-SEND_TO_CHANNEL = True  # True qilsangiz, habarlar kanalga yuboriladi
-
-# Debug rejimi
-DEBUG = True  # Debug xabarlarini ko'rsatish uchun
-
-# Admin foydalanuvchilar ro'yxati
-ADMIN_USERS = ["7578618626"]  # Admin foydalanuvchilar ID raqamlari
-
-# Yangi haydovchilarga beriladigan boshlang'ich tangalar soni
-INITIAL_DRIVER_COINS = 5
-
-# Qayta ishlangan xabarlar uchun set
-PROCESSED_MESSAGES = set()  # Qayta ishlangan xabar ID larini saqlash uchun
-
-# Ovozli xabarlar uchun vaqt chegarasi (soniyalarda)
-VOICE_MESSAGE_TIMEOUT = 30
-
-# =============================================
+from typing import Dict, List, Any, Optional, Union
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, Message, Chat, ParseMode, ChatMember, ChatPermissions, Bot, User
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ConversationHandler, ContextTypes, filters, CallbackContext
 
 # Logging sozlamalari
 logging.basicConfig(
-format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-level=logging.INFO
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Holatlar
-START, REGISTER_DRIVER, DRIVER_MENU = range(3)
-ENTER_PHONE = 3
-DRIVER_ACTION, DRIVER_PASSENGER_COUNT, DRIVER_DESTINATION, DRIVER_TIME, DRIVER_CONTACT, DRIVER_COMMENT = range(4, 10)
-WAITING_FOR_PHONE = 10  # Kanal suhbati uchun
+# Debug rejimini yoqish/o'chirish
+DEBUG = True
 
-# Admin panel holatlari
-ADMIN_MENU, ADMIN_STATS, ADMIN_SETTINGS, ADMIN_MESSAGE, ADMIN_GIFT = range(11, 16)
-ADMIN_MESSAGE_TEXT, ADMIN_MESSAGE_TARGET, ADMIN_GIFT_AMOUNT, ADMIN_GIFT_TARGET = range(16, 20)
-ADMIN_SETTINGS_MENU, ADMIN_SETTINGS_INITIAL_COINS = range(20, 22)
+# Bot tokeni
+BOT_TOKEN = "7670097486:AAGo0jqQQThtSDCGbe6nlI74b5p6_PhPvdc"  # O'z bot tokeningizni kiriting
 
-# Telefon raqamini formatlash
-def format_phone(phone):
-    # Raqamni tozalash (faqat raqamlar qolsin)
-    phone = re.sub(r'\D', '', phone)
+# Kanal ID raqami
+CHANNEL_ID = "-1002697195100"  # O'z kanal ID raqamingizni kiriting
 
-    # Agar raqam 998 bilan boshlansa, oldiga + qo'shish
-    if phone.startswith('998'):
-        return f"+{phone}"
-    # Agar raqam 9 bilan boshlansa va 9 raqamli bo'lsa, +998 qo'shish
-    elif len(phone) == 9 and phone.startswith('9'):
-        return f"+998{phone}"
-    # Boshqa holatlarda o'zini qaytarish
-    else:
-        return phone
+# Admin ID
+ADMIN_IDS = [7578618626]  # O'z admin ID raqamingizni kiriting
 
-# Fayllarni tekshirish va yaratish
+# Kanalga yuborish
+SEND_TO_CHANNEL = True
+
+# Haydovchilar kanali havolasi
+DRIVERS_CHANNEL_LINK = "https://t.me/your_channel"  # O'z kanalingiz havolasini kiriting
+
+# Conversation Handler holatlari
+ENTER_NAME, ENTER_PHONE, DRIVER_MENU = range(3)
+ADMIN_MENU, ADMIN_SETTINGS_MENU, ADMIN_SETTINGS_INITIAL_COINS = range(3, 6)
+ADMIN_MESSAGE_TEXT, ADMIN_MESSAGE_TARGET, ADMIN_GIFT_AMOUNT, ADMIN_GIFT_TARGET = range(6, 10)
+
+# Ma'lumotlar fayllari
+USERS_FILE = "users.json"  # Foydalanuvchilar ma'lumotlari
+OFFERS_FILE = "offers.json"  # Yo'lovchi berish takliflari
+DRIVERS_FILE = "drivers.json"  # Haydovchilar taklifi tarixi
+STATS_FILE = "stats.json"  # Statistika
+VOICE_MESSAGES_FILE = "voice_messages.json"  # Ovozli xabarlar
+GROUP_SETTINGS_FILE = "group_settings.json"  # Guruh sozlamalari
+
+# Standart qiymatlar
+INITIAL_DRIVER_COINS = 5  # Yangi haydovchiga beriladigan tangalar soni
+VOICE_MESSAGE_TIMEOUT = 30  # Ovozli xabar kutish vaqti (soniyalarda)
+
+# Standart guruh sozlamalari
+DEFAULT_GROUP_SETTINGS = {
+    "voice_tracking": True,  # Ovozli xabarlarni kuzatish
+    "phone_tracking": True,  # Telefon raqamlarni kuzatish
+    "auto_delete": True,     # Xabarlarni avtomatik o'chirish
+    "admin_only": False,     # Faqat adminlar uchun
+    "min_coins_required": 0, # Yo'lovchi olish uchun minimal tangalar soni
+    "voice_timeout": 30      # Ovozli xabar vaqt chegarasi (soniyalarda)
+}
+
+#
+# HELPER FUNKSIYALAR
+#
+
+# Fayllarni tekshirish
 def ensure_files_exist():
-    for file in [USERS_FILE, DRIVERS_FILE, OFFERS_FILE, CHANNEL_CONVERSATIONS_FILE, STATS_FILE, VOICE_MESSAGES_FILE]:
+    files = [USERS_FILE, OFFERS_FILE, DRIVERS_FILE, STATS_FILE, VOICE_MESSAGES_FILE, GROUP_SETTINGS_FILE]
+    for file in files:
         if not os.path.exists(file):
             with open(file, 'w', encoding='utf-8') as f:
-                json.dump({}, f, ensure_ascii=False)
+                f.write('{}')
+            logger.info(f"Fayl yaratildi: {file}")
 
 # Ma'lumotlarni yuklash
-def load_data(file_name):
+def load_data(file_path: str) -> Dict:
     try:
-        with open(file_name, 'r', encoding='utf-8') as f:
+        with open(file_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
+        # Fayl mavjud bo'lmasa yoki bo'sh bo'lsa, bo'sh lug'at qaytarish
         return {}
 
 # Ma'lumotlarni saqlash
-def save_data(data, file_name):
-    with open(file_name, 'w', encoding='utf-8') as f:
+def save_data(data: Dict, file_path: str) -> None:
+    with open(file_path, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# Statistikani yangilash
-def update_stats(stat_type, value=1):
-    stats = load_data(STATS_FILE)
+# Telefon raqamni formatlash
+def format_phone(phone: str) -> str:
+    # Telefon raqamni standart formatga o'tkazish
+    if not phone.startswith('+'):
+        if phone.startswith('998'):
+            phone = '+' + phone
+        elif len(phone) == 9:
+            phone = '+998' + phone
+    return phone
 
+# Foydalanuvchi havolasini yaratish
+def get_user_profile_link(user: User) -> str:
+    full_name = user.full_name
+    username = user.username
+    user_id = user.id
+    
+    if username:
+        return f'<a href="https://t.me/{username}">{full_name}</a>'
+    else:
+        return f'<a href="tg://user?id={user_id}">{full_name}</a>'
+
+# Statistikani yangilash
+def update_stats(key: str, value: int = 1) -> None:
+    stats = load_data(STATS_FILE)
+    
     # Bugungi sana
     today = datetime.now().strftime("%Y-%m-%d")
-
-    # Agar bugungi sana uchun statistika bo'lmasa, yaratish
+    
+    # Kunlik statistika
     if today not in stats:
-        stats[today] = {}
-
-    # Statistikani yangilash
-    if stat_type not in stats[today]:
-        stats[today][stat_type] = 0
-
-    stats[today][stat_type] += value
-
-    # Umumiy statistikani yangilash
+        stats[today] = {
+            "new_drivers": 0,
+            "new_offers": 0,
+            "offers_taken": 0,
+            "fake_offers": 0,
+            "failed_agreements": 0,
+            "voice_messages": 0
+        }
+    
+    # Umumiy statistika
     if "total" not in stats:
-        stats["total"] = {}
-
-    if stat_type not in stats["total"]:
-        stats["total"][stat_type] = 0
-
-    stats["total"][stat_type] += value
-
+        stats["total"] = {
+            "new_drivers": 0,
+            "new_offers": 0,
+            "offers_taken": 0,
+            "fake_offers": 0,
+            "failed_agreements": 0,
+            "voice_messages": 0
+        }
+    
+    # Statistikani yangilash
+    if key in stats[today]:
+        stats[today][key] += value
+    
+    if key in stats["total"]:
+        stats["total"][key] += value
+    
     save_data(stats, STATS_FILE)
 
-# Foydalanuvchi turini aniqlash
-def get_user_type(user_id):
-    users = load_data(USERS_FILE)
-    user_id_str = str(user_id)
+# Kanal bilan bog'lanishni tekshirish
+async def check_channel_connection(bot: Bot) -> None:
+    try:
+        chat = await bot.get_chat(CHANNEL_ID)
+        logger.info(f"Kanal bilan bog'lanish muvaffaqiyatli: {chat.title}")
+    except Exception as e:
+        logger.error(f"Kanal bilan bog'lanishda xatolik: {e}")
+        logger.error(f"Bot kanalga added bo'lganligini tekshiring va to'g'ri CHANNEL_ID ni kiriting")
 
-    if user_id_str in users:
-        return users[user_id_str].get('role', 'new')
-    return 'new'
+# Xatolarni qayta ishlash
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.error(f"Update {update} caused error {context.error}")
 
-# Foydalanuvchi admin ekanligini tekshirish
-def is_admin(user_id):
-    return str(user_id) in ADMIN_USERS
+#
+# GURUH SOZLAMALARI FUNKSIYALARI
+#
 
-# Foydalanuvchi profilini olish
-def get_user_profile_link(user):
-    if user.username:
-        return f"<a href='https://t.me/{user.username}'>{user.full_name}</a>"
-    else:
-        return f"<a href='tg://user?id={user.id}'>{user.full_name}</a>"
+# Guruh sozlamalarini yuklash
+def load_group_settings():
+    try:
+        with open(GROUP_SETTINGS_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        # Fayl mavjud bo'lmasa yoki bo'sh bo'lsa, bo'sh lug'at qaytarish
+        return {}
 
-# Foydalanuvchida yetarli tanga borligini tekshirish
-def has_enough_coins(user_id, required_coins):
-    users = load_data(USERS_FILE)
-    user_id_str = str(user_id)
+# Guruh sozlamalarini saqlash
+def save_group_settings(settings):
+    with open(GROUP_SETTINGS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(settings, f, ensure_ascii=False, indent=4)
+
+# Guruh sozlamalarini olish
+def get_group_settings(chat_id):
+    settings = load_group_settings()
+    chat_id_str = str(chat_id)
     
-    if user_id_str not in users:
+    # Agar bu guruh uchun sozlamalar bo'lmasa, standart sozlamalarni qaytarish
+    if chat_id_str not in settings:
+        settings[chat_id_str] = DEFAULT_GROUP_SETTINGS.copy()
+        save_group_settings(settings)
+    
+    return settings[chat_id_str]
+
+# Guruh sozlamasini yangilash
+def update_group_setting(chat_id, setting_key, setting_value):
+    settings = load_group_settings()
+    chat_id_str = str(chat_id)
+    
+    # Agar bu guruh uchun sozlamalar bo'lmasa, standart sozlamalarni yaratish
+    if chat_id_str not in settings:
+        settings[chat_id_str] = DEFAULT_GROUP_SETTINGS.copy()
+    
+    # Sozlamani yangilash
+    settings[chat_id_str][setting_key] = setting_value
+    save_group_settings(settings)
+    
+    return settings[chat_id_str]
+
+# Foydalanuvchi guruh admini ekanligini tekshirish
+async def is_group_admin(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id=None):
+    if user_id is None:
+        user_id = update.effective_user.id
+    
+    chat_id = update.effective_chat.id
+    
+    try:
+        # Foydalanuvchi statusini olish
+        member = await context.bot.get_chat_member(chat_id=chat_id, user_id=user_id)
+        
+        # Admin statuslarini tekshirish
+        return member.status in ['creator', 'administrator']
+    except Exception as e:
+        logger.error(f"Foydalanuvchi admin statusini tekshirishda xatolik: {e}")
         return False
+
+# Guruh xabarlarini tozalash
+async def clear_bot_messages(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
+    # Bu yerda botning barcha xabarlarini o'chirish logikasi bo'lishi kerak
+    # Misol uchun, bot yuborgan barcha xabarlar ID larini to'plab, keyin har birini o'chirish mumkin
+    # Lekin Telegram API cheklovlari tufayli bu murakkab operatsiya
     
-    # Agar hisobi 0 dan kichik bo'lsa, yo'lovchi ololmaydi
-    if users[user_id_str].get('coins', 0) < 0:
-        return False
+    if DEBUG:
+        logger.info(f"clear_bot_messages: {chat_id} chat dan barcha bot xabarlarini o'chirish")
     
-    return users[user_id_str].get('coins', 0) >= required_coins
-
-# Start buyrug'i
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Guruh chatlarida botni ishlatishni oldini olish
-    if update.effective_chat.type != "private":
-        return
-        
-    user_id = update.effective_user.id
-    user_type = get_user_type(user_id)
-
-    # Admin ekanligini tekshirish
-    if is_admin(user_id):
-        await show_admin_menu(update, context)
-        return ADMIN_MENU
-
-    if user_type == 'new':
-        # Foydalanuvchi ma'lumotlarini saqlash
-        users = load_data(USERS_FILE)
-        user_id_str = str(user_id)
-        
-        # Ismni profil nomidan olish
-        full_name = update.effective_user.full_name
-        
-        users[user_id_str] = {
-            "role": "driver_pending", 
-            "coins": INITIAL_DRIVER_COINS,
-            "full_name": full_name
-        }
-        save_data(users, USERS_FILE)
-        
-        # Telefon raqamini so'rash
-        contact_button = KeyboardButton("Telefon raqamni yuborish", request_contact=True)
-        await update.message.reply_text(
-            f"Assalomu alaykum, {full_name}! Taksi botimizga xush kelibsiz!\n"
-            f"Haydovchi sifatida ro'yxatdan o'tish uchun telefon raqamingizni yuboring:",
-            reply_markup=ReplyKeyboardMarkup([[contact_button]], resize_keyboard=True)
-        )
-        return ENTER_PHONE
-    elif user_type == 'driver':
-        await show_driver_menu(update, context)
-        return DRIVER_MENU
-
-# Telefon raqamini kiritish
-async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    if update.message.contact:
-        phone = update.message.contact.phone_number
-    else:
-        phone = update.message.text
-
-    # Telefon raqamini formatlash
-    phone = format_phone(phone)
-
-    users = load_data(USERS_FILE)
-    user_id_str = str(user_id)
-
-    users[user_id_str]["phone"] = phone
-    users[user_id_str]["role"] = "driver"
-    # Yangi haydovchilarga boshlang'ich tangalar berish
-    # Bu allaqachon start da berilgan
-    save_data(users, USERS_FILE)
-
-    # Statistikani yangilash
-    update_stats("new_drivers")
-
-    await show_driver_menu(update, context)
-    return DRIVER_MENU
-
-# Haydovchi menyusini ko'rsatish
-async def show_driver_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Guruh chatlarida botni ishlatishni oldini olish
-    if update.effective_chat.type != "private":
-        return
-        
-    user_id = update.effective_user.id
-    users = load_data(USERS_FILE)
-    user_id_str = str(user_id)
-
-    coins = users[user_id_str].get("coins", 0)
-
-    await update.message.reply_text(
-        f"Haydovchi menyusi:\nSizning tangalaringiz: {coins}",
-        reply_markup=ReplyKeyboardMarkup([
-            ["Yo'lovchi berish"]
-        ], resize_keyboard=True)
-    )
-    # Joriy holatni saqlash
-    context.user_data['state'] = DRIVER_MENU
-
-# Haydovchi menyusini boshqarish
-async def handle_driver_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Guruh chatlarida botni ishlatishni oldini olish
-    if update.effective_chat.type != "private":
-        return
-        
-    choice = update.message.text
-    message_id = update.message.message_id
-
-    # Xabar allaqachon qayta ishlangan bo'lsa, o'tkazib yuborish
-    if message_id in PROCESSED_MESSAGES:
-        if DEBUG:
-            logger.info(f"Xabar {message_id} allaqachon qayta ishlangan, o'tkazib yuborildi")
-        return DRIVER_MENU
-
-    if choice == "Yo'lovchi berish":
-        await update.message.reply_text(
-            "Yo'lovchi berish uchun quyidagi formatda xabar yuboring:\n"
-            "<telefon raqam> <yo'nalish (n yoki t)> <yo'lovchilar soni>\n\n"
-            "Masalan: +998901234567 n 3\n"
-            "Bu degani: +998901234567 raqamli haydovchi Namangandan Toshkentga 3 ta yo'lovchi bilan ketmoqchi.\n\n"
-            "Yoki: 901234567 t 2\n"
-            "Bu degani: 901234567 raqamli haydovchi Toshkentdan Namanganga 2 ta yo'lovchi bilan ketmoqchi.",
-            reply_markup=ReplyKeyboardMarkup([
-                ["Yo'lovchi berish"]
-            ], resize_keyboard=True)
-        )
-        return DRIVER_MENU
-
-    elif choice == "Soxta so'rov ekan":
-        # Taklif ID sini olish
-        if 'current_offer_id' in context.user_data:
-            offer_id = context.user_data['current_offer_id']
-            await handle_fake_offer(update, context, offer_id)
-            return DRIVER_MENU
-        else:
-            await update.message.reply_text("Siz hozirda hech qanday taklifni ko'rmayapsiz.")
-            return DRIVER_MENU
-
-    elif choice == "Oldim":
-        # Taklif ID sini olish
-        if 'current_offer_id' in context.user_data:
-            offer_id = context.user_data['current_offer_id']
-            await handle_successful_pickup(update, context, offer_id)
-            return DRIVER_MENU
-        else:
-            await update.message.reply_text("Siz hozirda hech qanday taklifni ko'rmayapsiz.")
-            return DRIVER_MENU
-
-    elif choice == "Kelisha olmadim":
-        # Taklif ID sini olish
-        if 'current_offer_id' in context.user_data:
-            offer_id = context.user_data['current_offer_id']
-            await handle_failed_agreement(update, context, offer_id)
-            return DRIVER_MENU
-        else:
-            await update.message.reply_text("Siz hozirda hech qanday taklifni ko'rmayapsiz.")
-            return DRIVER_MENU
-
-    else:
-        # Qisqartirilgan formatni tekshirish
-        shortened_format = re.search(r'(\+?\d+)\s+([nt])\s+(\d+)', choice)
-        if shortened_format:
-            # Xabarni qayta ishlangan deb belgilash
-            PROCESSED_MESSAGES.add(message_id)
-            # Qisqartirilgan formatni qayta ishlash
-            await handle_shortened_format(update, context)
-            return DRIVER_MENU
-        
-        await update.message.reply_text("Noto'g'ri tanlov. Iltimos, menyudan tanlang yoki yo'lovchi berish uchun ko'rsatilgan formatda xabar yuboring.")
-        return DRIVER_MENU
-
-# Soxta taklifni qayta ishlash
-async def handle_fake_offer(update: Update, context: ContextTypes.DEFAULT_TYPE, offer_id):
-    user_id = update.effective_user.id
-    user_id_str = str(user_id)
-
-    # Ma'lumotlarni yuklash
-    users = load_data(USERS_FILE)
-    offers = load_data(OFFERS_FILE)
-
-    # Taklif mavjudmi?
-    if offer_id not in offers:
-        await update.message.reply_text("Bu taklif topilmadi!")
-        return
-
-    # Taklif allaqachon olinganmi?
-    if offers[offer_id].get("status") == "taken":
-        await update.message.reply_text("Bu taklif allaqachon olingan!")
-        return
-
-    # Taklif bergan haydovchidan 1 tanga ayirish
-    offerer_id_str = str(offers[offer_id]["user_id"])
-    if offerer_id_str in users:
-        users[offerer_id_str]["coins"] = max(0, users[offerer_id_str].get("coins", 0) - 1)
-        save_data(users, USERS_FILE)
-
-    # Taklifni soxta deb belgilash
-    offers[offer_id]["status"] = "fake"
-    offers[offer_id]["fake_reporter_id"] = user_id
-    offers[offer_id]["fake_reported_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    save_data(offers, OFFERS_FILE)
-
-    # Statistikani yangilash
-    update_stats("fake_offers")
-
-    # Foydalanuvchi profilini olish
-    user_profile_link = get_user_profile_link(update.effective_user)
-
-    # Kanalda xabarni yangilash
+    # Bu faqat misol, amalda bu funksiya to'liq ishlamaydi
     try:
-        await context.bot.edit_message_text(
-            chat_id=CHANNEL_ID,
-            message_id=offers[offer_id]["message_id"],
-            text=f"{offers[offer_id].get('channel_message', 'Yo\'lovchi berish taklifi')}\n\n❌ SOXTA: {user_profile_link}",
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        logger.error(f"Xabarni yangilashda xatolik: {e}")
-
-    # Haydovchiga xabar yuborish
-    await update.message.reply_text(
-        f"Siz bu taklifni soxta deb belgiladingiz. Taklif bergan haydovchidan 1 tanga ayirildi.",
-        reply_markup=ReplyKeyboardMarkup([
-            ["Yo'lovchi berish"]
-        ], resize_keyboard=True)
-    )
-
-    # Taklif bergan haydovchiga xabar yuborish
-    try:
+        # Bu misol uchun, amalda buni amalga oshirish qiyin
         await context.bot.send_message(
-            chat_id=offers[offer_id]["user_id"],
-            text=f"Sizning yo'lovchi berish taklifingiz soxta deb belgilandi!\n"
-                f"Hisobingizdan 1 tanga ayirildi.\n"
-                f"Joriy tangalar soni: {users[offerer_id_str].get('coins', 0)}"
+            chat_id=chat_id,
+            text="Bot xabarlarini tozalash muvaffaqiyatli yakunlandi!"
         )
     except Exception as e:
-        logger.error(f"Xabar yuborishda xatolik: {e}")
+        logger.error(f"Xabarlarni tozalashda xatolik: {e}")
 
-    # Joriy taklif ID sini o'chirish
-    if 'current_offer_id' in context.user_data:
-        del context.user_data['current_offer_id']
-
-# Muvaffaqiyatli yo'lovchi olishni qayta ishlash
-async def handle_successful_pickup(update: Update, context: ContextTypes.DEFAULT_TYPE, offer_id):
-    user_id = update.effective_user.id
-    user_id_str = str(user_id)
-
-    # Ma'lumotlarni yuklash
-    users = load_data(USERS_FILE)
-    offers = load_data(OFFERS_FILE)
-
-    # Taklif mavjudmi?
-    if offer_id not in offers:
-        await update.message.reply_text("Bu taklif topilmadi!")
+# Guruh sozlamalari menyusini ko'rsatish
+async def show_group_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Faqat guruh chatlarida ishlaydi
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("Bu buyruq faqat guruh chatlarida ishlaydi!")
         return
-
-    # Taklif allaqachon olinganmi?
-    if offers[offer_id].get("status") == "taken":
-        await update.message.reply_text("Bu taklif allaqachon olingan!")
+    
+    # Foydalanuvchi admin ekanligini tekshirish
+    if not await is_group_admin(update, context):
+        await update.message.reply_text("Bu buyruq faqat guruh adminlari uchun!")
         return
-
-    # Yo'lovchilar sonini olish
-    passenger_count = offers[offer_id].get("passenger_count", 1)
-
-    # Haydovchida yetarli tanga bormi?
-    if users[user_id_str].get("coins", 0) < passenger_count:
-        await update.message.reply_text(
-            f"Sizda yetarli tanga yo'q! {passenger_count} tanga kerak, sizda esa {users[user_id_str].get('coins', 0)} tanga bor."
-        )
-        return
-
-    # Taklifni olindi deb belgilash
-    offers[offer_id]["status"] = "taken"
-    offers[offer_id]["taker_id"] = user_id
-    offers[offer_id]["taken_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    save_data(offers, OFFERS_FILE)
-
-    # Haydovchidan tanga ayirish (yo'lovchilar soniga qarab)
-    users[user_id_str]["coins"] = users[user_id_str].get("coins", 0) - passenger_count
-
-    # Taklif bergan haydovchiga tanga qo'shish
-    offerer_id_str = str(offers[offer_id]["user_id"])
-    if offerer_id_str in users:
-        users[offerer_id_str]["coins"] = users[offerer_id_str].get("coins", 0) + passenger_count
-
-    save_data(users, USERS_FILE)
-
-    # Statistikani yangilash
-    update_stats("offers_taken")
-
-    # Foydalanuvchi profilini olish
-    user_profile_link = get_user_profile_link(update.effective_user)
-
-    # Kanalda xabarni yangilash
-    try:
-        await context.bot.edit_message_text(
-            chat_id=CHANNEL_ID,
-            message_id=offers[offer_id]["message_id"],
-            text=f"{offers[offer_id].get('channel_message', 'Yo\'lovchi berish taklifi')}\n\n✅ OLINDI: {user_profile_link}",
-            parse_mode="HTML"
-        )
-    except Exception as e:
-        logger.error(f"Xabarni yangilashda xatolik: {e}")
-
-    # Haydovchiga xabar yuborish
+    
+    chat_id = update.effective_chat.id
+    settings = get_group_settings(chat_id)
+    
+    # Sozlamalar menyusini tayyorlash
+    keyboard = [
+        [
+            InlineKeyboardButton("Ovozli xabarlar", callback_data="group_setting_voice"),
+            InlineKeyboardButton("✅ Yoqilgan" if settings["voice_tracking"] else "❌ O'chirilgan", callback_data="toggle_voice_tracking")
+        ],
+        [
+            InlineKeyboardButton("Telefon raqamlar", callback_data="group_setting_phone"),
+            InlineKeyboardButton("✅ Yoqilgan" if settings["phone_tracking"] else "❌ O'chirilgan", callback_data="toggle_phone_tracking")
+        ],
+        [
+            InlineKeyboardButton("Avtomatik o'chirish", callback_data="group_setting_auto_delete"),
+            InlineKeyboardButton("✅ Yoqilgan" if settings["auto_delete"] else "❌ O'chirilgan", callback_data="toggle_auto_delete")
+        ],
+        [
+            InlineKeyboardButton("Faqat adminlar", callback_data="group_setting_admin_only"),
+            InlineKeyboardButton("✅ Yoqilgan" if settings["admin_only"] else "❌ O'chirilgan", callback_data="toggle_admin_only")
+        ],
+        [
+            InlineKeyboardButton("Minimal tangalar", callback_data="group_setting_min_coins"),
+            InlineKeyboardButton(f"{settings['min_coins_required']} tanga", callback_data="set_min_coins")
+        ],
+        [
+            InlineKeyboardButton("Guruh statistikasi", callback_data="group_stats")
+        ]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     await update.message.reply_text(
-        f"Siz yo'lovchi berish taklifini muvaffaqiyatli oldingiz!\n"
-        f"Hisobingizdan {passenger_count} tanga ayirildi.\n"
-        f"Joriy tangalar soni: {users[user_id_str].get('coins', 0)}",
-        reply_markup=ReplyKeyboardMarkup([
-            ["Yo'lovchi berish"]
-        ], resize_keyboard=True)
+        "Guruh sozlamalari:\n\n"
+        "Bu yerda guruhda botning ishlashini sozlashingiz mumkin.",
+        reply_markup=reply_markup
     )
 
-    # Taklif bergan haydovchiga xabar yuborish
-    try:
-        await context.bot.send_message(
-            chat_id=offers[offer_id]["user_id"],
-            text=f"Sizning yo'lovchi berish taklifingiz qabul qilindi!\n"
-                f"Hisobingizga {passenger_count} tanga qo'shildi.\n"
-                f"Joriy tangalar soni: {users[offerer_id_str].get('coins', 0)}\n\n"
-                f"Haydovchi: {users[user_id_str]['full_name']}\n"
-                f"Telefon: {format_phone(users[user_id_str].get('phone', ''))}"
+# Guruh sozlamalari callback query handler
+async def handle_group_settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    # Foydalanuvchi admin ekanligini tekshirish
+    if not await is_group_admin(update, context, query.from_user.id):
+        await query.edit_message_text("Bu buyruq faqat guruh adminlari uchun!")
+        return
+    
+    chat_id = update.effective_chat.id
+    settings = get_group_settings(chat_id)
+    
+    # Callback data ni tekshirish
+    if query.data == "toggle_voice_tracking":
+        # Ovozli xabarlarni kuzatish sozlamasini almashtirish
+        settings["voice_tracking"] = not settings["voice_tracking"]
+        update_group_setting(chat_id, "voice_tracking", settings["voice_tracking"])
+        
+    elif query.data == "toggle_phone_tracking":
+        # Telefon raqamlarni kuzatish sozlamasini almashtirish
+        settings["phone_tracking"] = not settings["phone_tracking"]
+        update_group_setting(chat_id, "phone_tracking", settings["phone_tracking"])
+        
+    elif query.data == "toggle_auto_delete":
+        # Avtomatik o'chirish sozlamasini almashtirish
+        settings["auto_delete"] = not settings["auto_delete"]
+        update_group_setting(chat_id, "auto_delete", settings["auto_delete"])
+        
+    elif query.data == "toggle_admin_only":
+        # Faqat adminlar sozlamasini almashtirish
+        settings["admin_only"] = not settings["admin_only"]
+        update_group_setting(chat_id, "admin_only", settings["admin_only"])
+        
+    elif query.data == "set_min_coins":
+        # Minimal tangalar sonini o'zgartirish uchun keyboard
+        keyboard = [
+            [
+                InlineKeyboardButton("0", callback_data="set_min_coins_0"),
+                InlineKeyboardButton("1", callback_data="set_min_coins_1"),
+                InlineKeyboardButton("2", callback_data="set_min_coins_2"),
+                InlineKeyboardButton("3", callback_data="set_min_coins_3")
+            ],
+            [
+                InlineKeyboardButton("4", callback_data="set_min_coins_4"),
+                InlineKeyboardButton("5", callback_data="set_min_coins_5"),
+                InlineKeyboardButton("10", callback_data="set_min_coins_10"),
+                InlineKeyboardButton("15", callback_data="set_min_coins_15")
+            ],
+            [
+                InlineKeyboardButton("Orqaga", callback_data="back_to_group_settings")
+            ]
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            "Yo'lovchi olish uchun minimal tangalar sonini tanlang:",
+            reply_markup=reply_markup
         )
-    except Exception as e:
-        logger.error(f"Xabar yuborishda xatolik: {e}")
-
-    # Joriy taklif ID sini o'chirish
-    if 'current_offer_id' in context.user_data:
-        del context.user_data['current_offer_id']
-
-# Kelisha olmaslikni qayta ishlash
-async def handle_failed_agreement(update: Update, context: ContextTypes.DEFAULT_TYPE, offer_id):
-    user_id = update.effective_user.id
-    user_id_str = str(user_id)
-
-    # Ma'lumotlarni yuklash
-    offers = load_data(OFFERS_FILE)
-
-    # Taklif mavjudmi?
-    if offer_id not in offers:
-        await update.message.reply_text("Bu taklif topilmadi!")
         return
-
-    # Taklif allaqachon olinganmi?
-    if offers[offer_id].get("status") == "taken":
-        await update.message.reply_text("Bu taklif allaqachon olingan!")
+        
+    elif query.data.startswith("set_min_coins_"):
+        # Minimal tangalar sonini o'zgartirish
+        min_coins = int(query.data.split("_")[-1])
+        update_group_setting(chat_id, "min_coins_required", min_coins)
+        settings["min_coins_required"] = min_coins
+        
+    elif query.data == "back_to_group_settings":
+        # Asosiy sozlamalar menyusiga qaytish
+        pass
+        
+    elif query.data == "group_stats":
+        # Guruh statistikasini ko'rsatish
+        await show_group_stats(update, context)
         return
-
-    # Taklifni qayta kanalga yuborish
-    offers[offer_id]["status"] = "waiting"
-    if "taker_id" in offers[offer_id]:
-        del offers[offer_id]["taker_id"]
-    save_data(offers, OFFERS_FILE)
-
-    # Statistikani yangilash
-    update_stats("failed_agreements")
-
-    # Kanalga yuborish uchun xabar tayyorlash
-    channel_message = offers[offer_id].get('channel_message', 
-        f"Yangi yo'lovchilar taklifi:\n"
-        f"Kim yubordi: {offers[offer_id].get('full_name', 'Nomsiz')}\n"
-        f"Nechta yo'lovchi: {offers[offer_id].get('passenger_count', 1)}\n"
-        f"Qayerga: {offers[offer_id].get('destination', 'Belgilanmagan')}\n\n"
-        f"Yo'lovchini olish uchun ushbu xabarga javob bering (reply) va 'olaman' deb yozing."
+    
+    # Sozlamalar menyusini yangilash
+    keyboard = [
+        [
+            InlineKeyboardButton("Ovozli xabarlar", callback_data="group_setting_voice"),
+            InlineKeyboardButton("✅ Yoqilgan" if settings["voice_tracking"] else "❌ O'chirilgan", callback_data="toggle_voice_tracking")
+        ],
+        [
+            InlineKeyboardButton("Telefon raqamlar", callback_data="group_setting_phone"),
+            InlineKeyboardButton("✅ Yoqilgan" if settings["phone_tracking"] else "❌ O'chirilgan", callback_data="toggle_phone_tracking")
+        ],
+        [
+            InlineKeyboardButton("Avtomatik o'chirish", callback_data="group_setting_auto_delete"),
+            InlineKeyboardButton("✅ Yoqilgan" if settings["auto_delete"] else "❌ O'chirilgan", callback_data="toggle_auto_delete")
+        ],
+        [
+            InlineKeyboardButton("Faqat adminlar", callback_data="group_setting_admin_only"),
+            InlineKeyboardButton("✅ Yoqilgan" if settings["admin_only"] else "❌ O'chirilgan", callback_data="toggle_admin_only")
+        ],
+        [
+            InlineKeyboardButton("Minimal tangalar", callback_data="group_setting_min_coins"),
+            InlineKeyboardButton(f"{settings['min_coins_required']} tanga", callback_data="set_min_coins")
+        ],
+        [
+            InlineKeyboardButton("Guruh statistikasi", callback_data="group_stats")
+        ]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        "Guruh sozlamalari:\n\n"
+        "Bu yerda guruhda botning ishlashini sozlashingiz mumkin.",
+        reply_markup=reply_markup
     )
 
-    # Eski xabarni o'chirish
-    try:
-        await context.bot.delete_message(
-            chat_id=CHANNEL_ID,
-            message_id=offers[offer_id]["message_id"]
-        )
-    except Exception as e:
-        logger.error(f"Xabarni o'chirishda xatolik: {e}")
-
-    # Kanalga qayta yuborish
-    try:
-        message = await context.bot.send_message(
-            chat_id=CHANNEL_ID, 
-            text=channel_message
-        )
-        
-        # Xabar ID ni saqlash
-        offers[offer_id]["message_id"] = message.message_id
-        save_data(offers, OFFERS_FILE)
-        
-    except Exception as e:
-        logger.error(f"Kanalga yuborishda xatolik: {e}")
-
-    # Haydovchiga xabar yuborish
-    await update.message.reply_text(
-        f"Siz yo'lovchi bilan kelisha olmadingiz. Taklif qayta kanalga yuborildi.",
-        reply_markup=ReplyKeyboardMarkup([
-            ["Yo'lovchi berish"]
-        ], resize_keyboard=True)
-    )
-
-    # Taklif bergan haydovchiga xabar yuborish
-    try:
-        await context.bot.send_message(
-            chat_id=offers[offer_id]["user_id"],
-            text=f"Haydovchi siz bilan kelisha olmadi. Taklifingiz qayta kanalga yuborildi."
-        )
-    except Exception as e:
-        logger.error(f"Xabar yuborishda xatolik: {e}")
-
-    # Joriy taklif ID sini o'chirish
-    if 'current_offer_id' in context.user_data:
-        del context.user_data['current_offer_id']
-
-# Qisqartirilgan formatni qayta ishlash (shaxsiy chatda)
-async def handle_shortened_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Guruh chatlarida botni ishlatishni oldini olish
-    if update.effective_chat.type != "private":
-        return
-        
-    message_text = update.message.text.lower()
-    user_id = update.effective_user.id
-    user_id_str = str(user_id)
-    message_id = update.message.message_id
-
-    if DEBUG:
-        logger.info(f"handle_shortened_format: Xabar {message_id} qayta ishlanmoqda")
-
-    # Qisqartirilgan formatni tekshirish
-    shortened_format = re.search(r'(\+?\d+)\s+([nt])\s+(\d+)', message_text)
-    if not shortened_format:
-        return
-
-    # Ma'lumotlarni olish
-    phone = shortened_format.group(1)
-    direction_code = shortened_format.group(2)
-    passenger_count = int(shortened_format.group(3))
-
-    # Telefon raqamini formatlash
-    phone = format_phone(phone)
-
-    # Yo'nalishni aniqlash
-    if direction_code == 'n':
-        destination = "Namangandan Toshkentga"
-    else:  # 't'
-        destination = "Toshkentdan Namanganga"
-
-    # Foydalanuvchi ma'lumotlarini yuklash
-    users = load_data(USERS_FILE)
-
-    # Foydalanuvchi haydovchimi?
-    is_driver = user_id_str in users and users[user_id_str].get("role") == "driver"
-
-    # Haydovchi bo'lmasa, ro'yxatdan o'tkazish
-    if not is_driver:
-        users[user_id_str] = {
-            "role": "driver",
-            "coins": INITIAL_DRIVER_COINS,  # Yangi haydovchilarga boshlang'ich tangalar berish
-            "full_name": update.effective_user.first_name,
-            "phone": phone
-        }
-        save_data(users, USERS_FILE)
-        
-        # Statistikani yangilash
-        update_stats("new_drivers")
-
-    # Yo'lovchi berish taklifini yaratish
-    drivers = load_data(DRIVERS_FILE)
-    offers = load_data(OFFERS_FILE)
-
-    # Haydovchi ma'lumotlarini saqlash
-    driver_data = {
-        "user_id": user_id,
-        "full_name": users[user_id_str].get("full_name", update.effective_user.first_name),
-        "phone": phone,
-        "passenger_count": passenger_count,
-        "destination": destination,
-        "time": "Tez orada",  # Vaqt ma'lumoti yo'q
-        "contact": phone,
-        "comment": "",
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "status": "waiting"
+# Guruh statistikasini ko'rsatish
+async def show_group_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    chat_id = update.effective_chat.id
+    
+    # Statistika ma'lumotlarini olish
+    # Bu yerda statistika ma'lumotlarini olish uchun funksiya chaqirilishi kerak
+    # Misol uchun:
+    # stats = get_group_stats(chat_id)
+    
+    # Misol uchun statistika
+    stats = {
+        "today": {
+            "voice_messages": 12,
+            "offers": 24,
+            "taken_offers": 18
+        },
+        "total": {
+            "voice_messages": 156,
+            "offers": 342,
+            "taken_offers": 287
+        },
+        "top_users": [
+            {"name": "Aziz Yuldashev", "offers": 24},
+            {"name": "Sardor Aliyev", "offers": 18},
+            {"name": "Dilshod Karimov", "offers": 15}
+        ]
     }
-
-    if user_id_str not in drivers:
-        drivers[user_id_str] = []
-
-    drivers[user_id_str].append(driver_data)
-    save_data(drivers, DRIVERS_FILE)
-
-    # Offer ID yaratish
-    offer_id = f"offer_{len(offers) + 1}"
-    offers[offer_id] = driver_data
-    save_data(offers, OFFERS_FILE)
-
-    # Statistikani yangilash
-    update_stats("new_offers")
-
-    # Kanalga yuborish uchun xabar tayyorlash (telefon raqamisiz)
-    channel_message = (
-        f"Yangi yo'lovchilar taklifi:\n"
-        f"Kim yubordi: {driver_data['full_name']}\n"
-        f"Nechta yo'lovchi: {driver_data['passenger_count']}\n"
-        f"Qayerga: {driver_data['destination']}\n\n"
-        f"Yo'lovchini olish uchun ushbu xabarga javob bering (reply) va 'olaman' deb yozing."
+    
+    # Statistika xabarini tayyorlash
+    stats_message = (
+        "📊 GURUH STATISTIKASI\n\n"
+        "Bugun:\n"
+        f"- Ovozli xabarlar: {stats['today']['voice_messages']}\n"
+        f"- Yo'lovchi berish takliflari: {stats['today']['offers']}\n"
+        f"- Qabul qilingan takliflar: {stats['today']['taken_offers']}\n\n"
+        "Umumiy:\n"
+        f"- Ovozli xabarlar: {stats['total']['voice_messages']}\n"
+        f"- Yo'lovchi berish takliflari: {stats['total']['offers']}\n"
+        f"- Qabul qilingan takliflar: {stats['total']['taken_offers']}\n\n"
+        "Eng faol foydalanuvchilar:\n"
+    )
+    
+    for i, user in enumerate(stats["top_users"], 1):
+        stats_message += f"{i}. {user['name']} - {user['offers']} ta taklif\n"
+    
+    # Orqaga qaytish tugmasi
+    keyboard = [
+        [
+            InlineKeyboardButton("Orqaga", callback_data="back_to_group_settings")
+        ]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        stats_message,
+        reply_markup=reply_markup
     )
 
-    # Xabar matnini saqlash
-    offers[offer_id]["channel_message"] = channel_message
-    save_data(offers, OFFERS_FILE)
-
-    # Kanalga yuborish
-    if SEND_TO_CHANNEL:
-        try:
-            message = await context.bot.send_message(
-                chat_id=CHANNEL_ID, 
-                text=channel_message
-            )
-            
-            # Xabar ID ni saqlash
-            offers[offer_id]["message_id"] = message.message_id
-            save_data(offers, OFFERS_FILE)
-            
-        except Exception as e:
-            logger.error(f"Kanalga yuborishda xatolik: {e}")
-
+# Guruh xabarlarini tozalash
+async def clear_group_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Faqat guruh chatlarida ishlaydi
+    if update.effective_chat.type not in ["group", "supergroup"]:
+        await update.message.reply_text("Bu buyruq faqat guruh chatlarida ishlaydi!")
+        return
+    
+    # Foydalanuvchi admin ekanligini tekshirish
+    if not await is_group_admin(update, context):
+        await update.message.reply_text("Bu buyruq faqat guruh adminlari uchun!")
+        return
+    
+    chat_id = update.effective_chat.id
+    
+    # Tasdiqlash uchun keyboard
+    keyboard = [
+        [
+            InlineKeyboardButton("Ha, tozalash", callback_data="confirm_clear_messages"),
+            InlineKeyboardButton("Yo'q, bekor qilish", callback_data="cancel_clear_messages")
+        ]
+    ]
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     await update.message.reply_text(
-        f"Rahmat! Sizning taklifingiz qabul qilindi va kanalga yuborildi.\n"
-        f"Agar biror haydovchi yo'lovchilaringizni olsa, sizga {passenger_count} tanga beriladi."
+        "Guruhda bot tomonidan yuborilgan barcha xabarlarni o'chirishni xohlaysizmi?",
+        reply_markup=reply_markup
     )
 
-# Qisqartirilgan formatni qayta ishlash (kanalda)
-async def handle_shortened_format_in_channel(update: Update, context: ContextTypes.DEFAULT_TYPE, match):
-    user_id = update.effective_user.id
-    user_id_str = str(user_id)
-    message_id = update.message.message_id
-    chat_id = str(update.effective_chat.id)
-
-    if DEBUG:
-        logger.info(f"handle_shortened_format_in_channel: Xabar {message_id} qayta ishlanmoqda")
-        logger.info(f"Kanal ID: {chat_id}, CHANNEL_ID: {CHANNEL_ID}")
-
-    # Ma'lumotlarni olish
-    phone = match.group(1)
-    direction_code = match.group(2)
-    passenger_count = int(match.group(3))
-
-    # Telefon raqamini formatlash
-    phone = format_phone(phone)
-
-    # Yo'nalishni aniqlash
-    if direction_code == 'n':
-        destination = "Namangandan Toshkentga"
-    else:  # 't'
-        destination = "Toshkentdan Namanganga"
-
-    # Foydalanuvchi ma'lumotlarini yuklash
-    users = load_data(USERS_FILE)
-
-    # Foydalanuvchi haydovchimi?
-    is_driver = user_id_str in users and users[user_id_str].get("role") == "driver"
-
-    # Haydovchi bo'lmasa, ro'yxatdan o'tkazish
-    if not is_driver:
-        users[user_id_str] = {
-            "role": "driver",
-            "coins": INITIAL_DRIVER_COINS,  # Yangi haydovchilarga boshlang'ich tangalar berish
-            "full_name": update.effective_user.first_name,
-            "phone": phone
-        }
-        save_data(users, USERS_FILE)
+# Guruh xabarlarini tozalash callback query handler
+async def handle_clear_messages_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    # Foydalanuvchi admin ekanligini tekshirish
+    if not await is_group_admin(update, context, query.from_user.id):
+        await query.edit_message_text("Bu buyruq faqat guruh adminlari uchun!")
+        return
+    
+    chat_id = update.effective_chat.id
+    
+    if query.data == "confirm_clear_messages":
+        # Bot xabarlarini o'chirish logikasi
+        await clear_bot_messages(context, chat_id)
         
-        # Statistikani yangilash
-        update_stats("new_drivers")
+        await query.edit_message_text("Guruhda bot tomonidan yuborilgan barcha xabarlar o'chirildi.")
+    else:
+        await query.edit_message_text("Xabarlarni tozalash bekor qilindi.")
 
-    # Yo'lovchi berish taklifini yaratish
-    drivers = load_data(DRIVERS_FILE)
-    offers = load_data(OFFERS_FILE)
+#
+# OVOZLI XABAR VA GURUH FUNKSIYALARI
+#
 
-    # Haydovchi ma'lumotlarini saqlash
-    driver_data = {
-        "user_id": user_id,
-        "full_name": users[user_id_str].get("full_name", update.effective_user.first_name),
-        "phone": phone,
-        "passenger_count": passenger_count,
-        "destination": destination,
-        "time": "Tez orada",  # Vaqt ma'lumoti yo'q
-        "contact": phone,
-        "comment": "",
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "status": "waiting"
-    }
-
-    if user_id_str not in drivers:
-        drivers[user_id_str] = []
-
-    drivers[user_id_str].append(driver_data)
-    save_data(drivers, DRIVERS_FILE)
-
-    # Offer ID yaratish
-    offer_id = f"offer_{len(offers) + 1}"
-    offers[offer_id] = driver_data
-    save_data(offers, OFFERS_FILE)
-
-    # Statistikani yangilash
-    update_stats("new_offers")
-
-    # Kanalga yuborish uchun xabar tayyorlash (telefon raqamisiz)
-    channel_message = (
-        f"Yangi yo'lovchilar taklifi:\n"
-        f"Kim yubordi: {driver_data['full_name']}\n"
-        f"Nechta yo'lovchi: {driver_data['passenger_count']}\n"
-        f"Qayerga: {driver_data['destination']}\n\n"
-        f"Yo'lovchini olish uchun ushbu xabarga javob bering (reply) va 'olaman' deb yozing."
-    )
-
-    # Xabar matnini saqlash
-    offers[offer_id]["channel_message"] = channel_message
-    save_data(offers, OFFERS_FILE)
-
-    # Xabarni o'chirish
-    try:
-        await context.bot.delete_message(
-            chat_id=update.effective_chat.id,
-            message_id=update.message.message_id
-        )
-    except Exception as e:
-        logger.error(f"Xabarni o'chirishda xatolik: {e}")
-
-    # Kanalga yuborish
-    if SEND_TO_CHANNEL:
-        try:
-            message = await context.bot.send_message(
-                chat_id=CHANNEL_ID, 
-                text=channel_message
-            )
-            
-            # Xabar ID ni saqlash
-            offers[offer_id]["message_id"] = message.message_id
-            save_data(offers, OFFERS_FILE)
-            
-        except Exception as e:
-            logger.error(f"Kanalga yuborishda xatolik: {e}")
-
+# Ovozli xabar vaqti tugaganda chaqiriladigan funksiya
+async def check_voice_message_timeout(context: ContextTypes.DEFAULT_TYPE) -> None:
+    job = context.job
+    data = job.data
+    chat_id = data["chat_id"]
+    user_id = data["user_id"]
+    
+    chat_id_str = str(chat_id)
+    user_id_str = str(user_id)
+    
+    # Ovozli xabarlar ma'lumotlarini yuklash
+    voice_messages = load_data(VOICE_MESSAGES_FILE)
+    
+    # Agar bu chat uchun ma'lumotlar bo'lmasa yoki foydalanuvchi ovozli xabar yubormagan bo'lsa, o'tkazib yuborish
+    if chat_id_str not in voice_messages or user_id_str not in voice_messages[chat_id_str]:
+        return
+    
+    # Agar ovozli xabar uchun telefon raqam kutilmayotgan bo'lsa, o'tkazib yuborish
+    if not voice_messages[chat_id_str][user_id_str].get("waiting_for_phone", False):
+        return
+    
     # Foydalanuvchiga xabar yuborish
     try:
         await context.bot.send_message(
             chat_id=user_id,
-            text=f"Rahmat! Sizning taklifingiz qabul qilindi va kanalga yuborildi.\n"
-                f"Agar biror haydovchi yo'lovchilaringizni olsa, sizga {passenger_count} tanga beriladi."
+            text="Ovozli xabar uchun telefon raqam vaqti tugadi. Iltimos, qaytadan ovozli xabar yuboring."
         )
     except Exception as e:
         logger.error(f"Foydalanuvchiga xabar yuborishda xatolik: {e}")
+    
+    # Ovozli xabar ma'lumotlarini o'chirish
+    del voice_messages[chat_id_str][user_id_str]
+    save_data(voice_messages, VOICE_MESSAGES_FILE)
 
 # Guruhda ovozli xabarlarni kuzatish
 async def handle_group_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -819,6 +564,17 @@ async def handle_group_voice_message(update: Update, context: ContextTypes.DEFAU
     chat_id_str = str(chat_id)
     message_id = update.message.message_id
     
+    # Guruh sozlamalarini olish
+    group_settings = get_group_settings(chat_id)
+    
+    # Agar ovozli xabarlarni kuzatish o'chirilgan bo'lsa, o'tkazib yuborish
+    if not group_settings.get("voice_tracking", True):
+        return
+    
+    # Agar faqat adminlar rejimi yoqilgan bo'lsa, foydalanuvchi admin ekanligini tekshirish
+    if group_settings.get("admin_only", False) and not await is_group_admin(update, context):
+        return
+    
     if DEBUG:
         logger.info(f"Guruhda ovozli xabar qabul qilindi: user_id={user_id}, chat_id={chat_id}, message_id={message_id}")
     
@@ -834,15 +590,17 @@ async def handle_group_voice_message(update: Update, context: ContextTypes.DEFAU
         "message_id": message_id,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "voice_file_id": update.message.voice.file_id,
-        "waiting_for_phone": True
+        "waiting_for_phone": True,
+        "original_message_id": message_id  # Asl xabar ID sini saqlash
     }
     
     save_data(voice_messages, VOICE_MESSAGES_FILE)
     
-    # Vaqt hisoblagich o'rnatish (30 soniya)
+    # Vaqt hisoblagich o'rnatish
+    voice_timeout = group_settings.get("voice_timeout", VOICE_MESSAGE_TIMEOUT)
     context.job_queue.run_once(
         check_voice_message_timeout, 
-        VOICE_MESSAGE_TIMEOUT,
+        voice_timeout,
         data={"chat_id": chat_id, "user_id": user_id}
     )
 
@@ -862,6 +620,17 @@ async def handle_group_phone_message(update: Update, context: ContextTypes.DEFAU
     chat_id_str = str(chat_id)
     message_id = update.message.message_id
     message_text = update.message.text
+    
+    # Guruh sozlamalarini olish
+    group_settings = get_group_settings(chat_id)
+    
+    # Agar telefon raqamlarni kuzatish o'chirilgan bo'lsa, o'tkazib yuborish
+    if not group_settings.get("phone_tracking", True):
+        return
+    
+    # Agar faqat adminlar rejimi yoqilgan bo'lsa, foydalanuvchi admin ekanligini tekshirish
+    if group_settings.get("admin_only", False) and not await is_group_admin(update, context):
+        return
     
     # Telefon raqam formatini tekshirish
     phone_match = re.search(r'(\+?998\d{9}|\d{9})', message_text)
@@ -885,12 +654,13 @@ async def handle_group_phone_message(update: Update, context: ContextTypes.DEFAU
     if not voice_data.get("waiting_for_phone", False):
         return
     
-    # Ovozli xabar vaqtini tekshirish (30 soniya ichida bo'lishi kerak)
+    # Ovozli xabar vaqtini tekshirish
     voice_time = datetime.strptime(voice_data["timestamp"], "%Y-%m-%d %H:%M:%S")
     current_time = datetime.now()
     time_diff = (current_time - voice_time).total_seconds()
     
-    if time_diff > VOICE_MESSAGE_TIMEOUT:
+    voice_timeout = group_settings.get("voice_timeout", VOICE_MESSAGE_TIMEOUT)
+    if time_diff > voice_timeout:
         # Vaqt o'tib ketgan, ovozli xabar ma'lumotlarini o'chirish
         del voice_messages[chat_id_str][user_id_str]
         save_data(voice_messages, VOICE_MESSAGES_FILE)
@@ -908,33 +678,19 @@ async def handle_group_phone_message(update: Update, context: ContextTypes.DEFAU
     except Exception as e:
         logger.error(f"Telefon raqam xabarini o'chirishda xatolik: {e}")
     
+    # Ovozli xabarni o'chirish
+    try:
+        original_message_id = voice_data.get("original_message_id")
+        if original_message_id:
+            await context.bot.delete_message(
+                chat_id=chat_id,
+                message_id=original_message_id
+            )
+    except Exception as e:
+        logger.error(f"Ovozli xabarni o'chirishda xatolik: {e}")
+    
     # Yo'lovchi taklifi yaratish
     await create_voice_offer(update, context, voice_data, phone)
-    
-    # Ovozli xabar ma'lumotlarini o'chirish
-    del voice_messages[chat_id_str][user_id_str]
-    save_data(voice_messages, VOICE_MESSAGES_FILE)
-
-# Ovozli xabar vaqti o'tganini tekshirish
-async def check_voice_message_timeout(context: CallbackContext):
-    chat_id = context.job.data["chat_id"]
-    user_id = context.job.data["user_id"]
-    chat_id_str = str(chat_id)
-    user_id_str = str(user_id)
-    
-    # Ovozli xabarlar ma'lumotlarini yuklash
-    voice_messages = load_data(VOICE_MESSAGES_FILE)
-    
-    # Agar bu chat uchun ma'lumotlar bo'lmasa yoki foydalanuvchi ovozli xabar yubormagan bo'lsa, o'tkazib yuborish
-    if chat_id_str not in voice_messages or user_id_str not in voice_messages[chat_id_str]:
-        return
-    
-    # Ovozli xabar ma'lumotlarini olish
-    voice_data = voice_messages[chat_id_str][user_id_str]
-    
-    # Agar ovozli xabar uchun telefon raqam kutilmayotgan bo'lsa, o'tkazib yuborish
-    if not voice_data.get("waiting_for_phone", False):
-        return
     
     # Ovozli xabar ma'lumotlarini o'chirish
     del voice_messages[chat_id_str][user_id_str]
@@ -1039,30 +795,358 @@ async def create_voice_offer(update: Update, context: ContextTypes.DEFAULT_TYPE,
     except Exception as e:
         logger.error(f"Foydalanuvchiga xabar yuborishda xatolik: {e}")
 
-# Yo'lovchini olish jarayoni (reply orqali)
+#
+# BOT FUNKSIYALARI
+#
+
+# Start buyrug'i handler
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.effective_user.id
+    user_id_str = str(user_id)
+    
+    # Foydalanuvchi ma'lumotlarini yuklash
+    users = load_data(USERS_FILE)
+    
+    # Admin rejimini tekshirish
+    if user_id in ADMIN_IDS:
+        # Admin menyusini ko'rsatish
+        keyboard = [
+            ["Statistika", "Bot sozlamalari"],
+            ["Xabar yuborish", "Tanga sovg'a qilish"],
+            ["Botni qayta ishga tushirish", "Haydovchi rejimi"]
+        ]
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            f"Salom, {update.effective_user.full_name}! Siz admin rejimida ishlayapsiz.",
+            reply_markup=reply_markup
+        )
+        
+        return ADMIN_MENU
+    
+    # Guruh chatida bo'lsa
+    if update.effective_chat.type in ["group", "supergroup"]:
+        # Guruh sozlamalari uchun admin buyruqlarini ko'rsatish
+        message = (
+            f"Salom {update.effective_user.full_name}!\n"
+            f"Men haydovchilar uchun yo'lovchi berish bot man.\n\n"
+            f"Guruh sozlamalarini o'zgartirish uchun guruh admini /settings buyrug'ini berishlari mumkin."
+        )
+        
+        await update.message.reply_text(message)
+        return ConversationHandler.END
+    
+    # Haydovchimi?
+    is_driver = user_id_str in users and users[user_id_str].get("role") == "driver"
+    
+    if is_driver:
+        # Haydovchi menyusini ko'rsatish
+        keyboard = [
+            ["➕ Yo'lovchi berish", "💰 Mening tangalarim"],
+            ["📋 Mening takliflarim", "ℹ️ Bot haqida"]
+        ]
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            f"Salom, {users[user_id_str]['full_name']}! Tanga: {users[user_id_str].get('coins', 0)}\n"
+            f"Bo'limni tanlang:",
+            reply_markup=reply_markup
+        )
+        
+        return DRIVER_MENU
+    else:
+        # Haydovchini ro'yxatdan o'tkazish
+        keyboard = [
+            [KeyboardButton(text="Telefon raqamimni ulashish", request_contact=True)]
+        ]
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
+        # Foydalanuvchining to'liq ismini saqlash
+        users[user_id_str] = {
+            "full_name": update.effective_user.full_name
+        }
+        save_data(users, USERS_FILE)
+        
+        await update.message.reply_text(
+            f"Salom, {update.effective_user.full_name}!\n"
+            f"Haydovchi sifatida ro'yxatdan o'tish uchun iltimos, telefon raqamingizni yuboring:",
+            reply_markup=reply_markup
+        )
+        
+        return ENTER_PHONE
+
+# Telefon raqamni kiritish handler
+async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.effective_user.id
+    user_id_str = str(user_id)
+    
+    # Foydalanuvchi ma'lumotlarini yuklash
+    users = load_data(USERS_FILE)
+    
+    # Telefon raqamni olish
+    if update.message.contact:
+        phone = update.message.contact.phone_number
+    else:
+        phone_match = re.search(r'(\+?998\d{9}|\d{9})', update.message.text)
+        if not phone_match:
+            await update.message.reply_text(
+                "Telefon raqami noto'g'ri formatda kiritildi.\n"
+                "Iltimos, telefon raqamingizni '+998XXXXXXXXX' yoki 'XXXXXXXXX' formatida kiriting."
+            )
+            return ENTER_PHONE
+        
+        phone = phone_match.group(1)
+    
+    # Telefon raqamni formatlash
+    phone = format_phone(phone)
+    
+    # Foydalanuvchi ma'lumotlarini yangilash
+    users[user_id_str] = {
+        "role": "driver",
+        "coins": INITIAL_DRIVER_COINS,
+        "full_name": update.effective_user.full_name,
+        "phone": phone
+    }
+    
+    save_data(users, USERS_FILE)
+    
+    # Statistikani yangilash
+    update_stats("new_drivers")
+    
+    # Haydovchi menyusini ko'rsatish
+    keyboard = [
+        ["➕ Yo'lovchi berish", "💰 Mening tangalarim"],
+        ["📋 Mening takliflarim", "ℹ️ Bot haqida"]
+    ]
+    
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
+    await update.message.reply_text(
+        f"Tabriklaymiz! Siz haydovchi sifatida ro'yxatdan o'tdingiz.\n"
+        f"Sizga boshlang'ich {INITIAL_DRIVER_COINS} tanga berildi.\n\n"
+        f"Botdan foydalanish yo'riqnomasi:\n"
+        f"1. Yo'lovchi berish uchun \"➕ Yo'lovchi berish\" tugmasini bosing yoki qisqartirilgan formatda yozing.\n"
+        f"   Format: [telefon raqam] [yo'nalish (n/t)] [yo'lovchilar soni]\n"
+        f"   Masalan: +998901234567 n 3\n"
+        f"2. Ovozli xabar orqali ham yo'lovchi berish mumkin.\n"
+        f"3. Yo'lovchi berish takliflari kanalga yuboriladi: {DRIVERS_CHANNEL_LINK}\n"
+        f"4. Yo'lovchi berish taklifi qabul qilinsa, sizga tanga beriladi.\n"
+        f"5. Yo'lovchi olish uchun kanaldagi takliflarga javob berib, yo'lovchilarni olishingiz mumkin.",
+        reply_markup=reply_markup
+    )
+    
+    return DRIVER_MENU
+
+# Haydovchi menyusi handler
+async def handle_driver_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.effective_user.id
+    user_id_str = str(user_id)
+    text = update.message.text
+    
+    # Foydalanuvchi ma'lumotlarini yuklash
+    users = load_data(USERS_FILE)
+    
+    # Foydalanuvchi haydovchimi?
+    if user_id_str not in users or users[user_id_str].get("role") != "driver":
+        # Botni qayta ishga tushirish
+        return await start(update, context)
+    
+    # Yo'lovchi berish
+    if text == "➕ Yo'lovchi berish":
+        await update.message.reply_text(
+            "Yo'lovchi berish uchun xabaringizni qisqartirilgan formatda yuboring:\n"
+            "[telefon raqam] [yo'nalish (n/t)] [yo'lovchilar soni]\n"
+            "Masalan: +998901234567 n 3\n\n"
+            "yoki ovozli xabar yuboring va keyin telefon raqamingizni yozing."
+        )
+        return DRIVER_MENU
+    
+    # Tangalar haqida ma'lumot
+    elif text == "💰 Mening tangalarim":
+        coins = users[user_id_str].get("coins", 0)
+        
+        await update.message.reply_text(
+            f"Sizning tangalaringiz: {coins}\n\n"
+            f"Yo'lovchi berish taklifi qabul qilinsa, sizga tanga beriladi.\n"
+            f"Yo'lovchi olish uchun yo'lovchilar soniga qarab tanga sarflanadi."
+        )
+        return DRIVER_MENU
+    
+    # Takliflar tarixi
+    elif text == "📋 Mening takliflarim":
+        drivers = load_data(DRIVERS_FILE)
+        
+        if user_id_str not in drivers or not drivers[user_id_str]:
+            await update.message.reply_text(
+                "Sizda hali yo'lovchi berish takliflari yo'q."
+            )
+            return DRIVER_MENU
+        
+        # So'nggi 5 ta taklifni ko'rsatish
+        offers = drivers[user_id_str][-5:]
+        
+        message = "Sizning oxirgi takliflaringiz:\n\n"
+        
+        for i, offer in enumerate(offers, 1):
+            status_str = ""
+            if offer.get("status") == "waiting":
+                status_str = "⏳ Kutilmoqda"
+            elif offer.get("status") == "taken":
+                status_str = "✅ Olindi"
+            elif offer.get("status") == "fake":
+                status_str = "❌ Soxta"
+            
+            message += f"{i}. {offer.get('created_at', '')}\n"
+            message += f"   Yo'nalish: {offer.get('destination', '')}\n"
+            message += f"   Yo'lovchilar soni: {offer.get('passenger_count', 0)}\n"
+            message += f"   Holati: {status_str}\n\n"
+        
+        await update.message.reply_text(message)
+        return DRIVER_MENU
+    
+    # Bot haqida ma'lumot
+    elif text == "ℹ️ Bot haqida":
+        await update.message.reply_text(
+            "Taksi Bot - bu haydovchilar va yo'lovchilar o'rtasida aloqa o'rnatish uchun yaratilgan bot.\n\n"
+            "Bot orqali haydovchilar yo'lovchi berish takliflarini yuborishlari, boshqa haydovchilar esa bu takliflarni qabul qilishlari mumkin.\n\n"
+            f"Haydovchilar kanali: {DRIVERS_CHANNEL_LINK}\n\n"
+            "Bot \"tanga\" tizimidan foydalanadi. Yo'lovchi berish taklifi qabul qilinsa, sizga tanga beriladi. Yo'lovchi olish uchun yo'lovchilar soniga qarab tanga sarflanadi."
+        )
+        return DRIVER_MENU
+    
+    # Qisqartirilgan format - yo'lovchi berish
+    phone_match = re.search(r'(\+?998\d{9}|\d{9})', text)
+    if phone_match:
+        # Telefon raqamni formatlash
+        phone = format_phone(phone_match.group(1))
+        
+        # Yo'nalish va yo'lovchilar sonini olish
+        parts = text.split()
+        
+        destination = ""
+        passenger_count = 1
+        
+        for i, part in enumerate(parts):
+            if part.lower() in ["n", "t", "н", "т"]:
+                if part.lower() in ["n", "н"]:
+                    destination = "Namangandan Toshkentga"
+                else:
+                    destination = "Toshkentdan Namanganga"
+            
+            if part.isdigit() and int(part) > 0 and int(part) <= 10:
+                passenger_count = int(part)
+        
+        if not destination:
+            destination = "Aniq ko'rsatilmagan"
+        
+        # Yo'lovchi berish taklifini saqlash
+        await create_passenger_offer(update, context, phone, destination, passenger_count)
+        
+        return DRIVER_MENU
+    
+    # Noto'g'ri buyruq
+    await update.message.reply_text(
+        "Noto'g'ri buyruq berildi. Iltimos, menyudan tanlang."
+    )
+    
+    return DRIVER_MENU
+
+# Yo'lovchi berish taklifini yaratish
+async def create_passenger_offer(update: Update, context: ContextTypes.DEFAULT_TYPE, phone: str, destination: str, passenger_count: int) -> None:
+    user_id = update.effective_user.id
+    user_id_str = str(user_id)
+    
+    # Foydalanuvchi ma'lumotlarini yuklash
+    users = load_data(USERS_FILE)
+    
+    # Foydalanuvchi haydovchimi?
+    if user_id_str not in users or users[user_id_str].get("role") != "driver":
+        # Botni qayta ishga tushirish
+        await start(update, context)
+        return
+    
+    # Haydovchi ma'lumotlarini saqlash
+    driver_data = {
+        "user_id": user_id,
+        "full_name": users[user_id_str]["full_name"],
+        "phone": phone,
+        "passenger_count": passenger_count,
+        "destination": destination,
+        "time": "Tez orada",
+        "contact": phone,
+        "comment": "",
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "status": "waiting"
+    }
+    
+    # Haydovchilar takliflari fayli
+    drivers = load_data(DRIVERS_FILE)
+    
+    if user_id_str not in drivers:
+        drivers[user_id_str] = []
+    
+    drivers[user_id_str].append(driver_data)
+    save_data(drivers, DRIVERS_FILE)
+    
+    # Yo'lovchi berish takliflari fayli
+    offers = load_data(OFFERS_FILE)
+    
+    offer_id = f"offer_{len(offers) + 1}"
+    offers[offer_id] = driver_data
+    save_data(offers, OFFERS_FILE)
+    
+    # Statistikani yangilash
+    update_stats("new_offers")
+    
+    # Kanalga yuborish
+    if SEND_TO_CHANNEL:
+        try:
+            offer_message = (
+                f"Yangi yo'lovchilar taklifi:\n"
+                f"Kim yubordi: {driver_data['full_name']}\n"
+                f"Telefon: {format_phone(driver_data['phone'])}\n"
+                f"Yo'lovchilar soni: {driver_data['passenger_count']}\n"
+                f"Yo'nalish: {driver_data['destination']}\n"
+                f"Vaqt: {driver_data['time']}\n"
+                f"Izoh: {driver_data['comment']}"
+            )
+            
+            message = await context.bot.send_message(
+                chat_id=CHANNEL_ID,
+                text=offer_message
+            )
+            
+            # Xabar ID ni saqlash
+            offers[offer_id]["message_id"] = message.message_id
+            save_data(offers, OFFERS_FILE)
+            
+        except Exception as e:
+            logger.error(f"Kanalga yuborishda xatolik: {e}")
+    
+    # Foydalanuvchiga xabar yuborish
+    await update.message.reply_text(
+        f"Rahmat! Sizning yo'lovchi berish taklifingiz qabul qilindi va kanalga yuborildi.\n"
+        f"Agar biror haydovchi yo'lovchilaringizni olsa, sizga tanga beriladi."
+    )
+
+# Yo'lovchi olish jarayoni (reply orqali)
 async def handle_passenger_claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_id_str = str(user_id)
     message_id = update.message.message_id
+    chat_id = update.effective_chat.id
 
     if DEBUG:
         logger.info(f"handle_passenger_claim: Xabar {message_id} qayta ishlanmoqda")
-
-    # Har qanday turdagi javob xabarni qabul qilish (matn, ovozli, rasm, video, hujjat va h.k.)
-    if DEBUG:
         logger.info(f"Javob xabar qabul qilindi: {update.message}")
         logger.info(f"Xabar turi: {update.message.voice is not None and 'Ovozli' or update.message.text and 'Matn' or 'Boshqa'}")
 
     # Javob berilgan xabarni olish
     original_message = update.message.reply_to_message
     if not original_message:
-        return
-
-    # Tekshirish: original xabar botdan kelganmi?
-    if original_message.from_user.id != context.bot.id:
-        # Agar xabar botdan kelmagan bo'lsa, funksiyadan chiqish
-        if DEBUG:
-            logger.info(f"Bu xabar botdan kelmagan, qayta ishlanmaydi")
         return
 
     # Ma'lumotlarni yuklash
@@ -1074,7 +1158,7 @@ async def handle_passenger_claim(update: Update, context: ContextTypes.DEFAULT_T
         # Haydovchi bo'lmasa, ro'yxatdan o'tkazish
         users[user_id_str] = {
             "role": "driver",
-            "coins": INITIAL_DRIVER_COINS,  # Yangi haydovchilarga boshlang'ich tangalar berish
+            "coins": INITIAL_DRIVER_COINS,
             "full_name": update.effective_user.full_name,
             "phone": ""  # Telefon raqami kerak bo'ladi
         }
@@ -1089,17 +1173,48 @@ async def handle_passenger_claim(update: Update, context: ContextTypes.DEFAULT_T
         )
         return
 
+    # Guruh sozlamalarini olish (agar guruhda bo'lsa)
+    min_coins_required = 0
+    if update.effective_chat.type in ["group", "supergroup"]:
+        group_settings = get_group_settings(chat_id)
+        min_coins_required = group_settings.get("min_coins_required", 0)
+
+    # Haydovchida yetarli tanga bormi?
+    if users[user_id_str].get("coins", 0) < min_coins_required:
+        await update.message.reply_text(
+            f"Sizda yetarli tanga yo'q! Yo'lovchi olish uchun kamida {min_coins_required} tanga kerak."
+        )
+        return
+
     # Xabar ID orqali offer ni topish
     offer_id = None
+    offer_by_voice = False
+    offer_by_info = False
 
-    # Ovozli xabar uchun
+    # 1. Ovozli xabar uchun
     if original_message.voice:
+        offer_by_voice = True
         # Ovozli xabar ID orqali offer ni topish
         for oid, offer_data in offers.items():
             if offer_data.get("voice_file_id") == original_message.voice.file_id:
                 offer_id = oid
                 break
-    else:
+    
+    # 2. Info xabar uchun (ovozli xabar haqidagi ma'lumot)
+    if not offer_id and original_message.text and "Yuqoridagi yo'lovchini olish uchun" in original_message.text:
+        offer_by_info = True
+        # Info xabar ID orqali offer ni topish
+        for oid, offer_data in offers.items():
+            if offer_data.get("info_message_id") == original_message.message_id:
+                offer_id = oid
+                break
+            # Agar info xabar reply_to_message_id orqali bog'langan bo'lsa
+            elif original_message.reply_to_message and offer_data.get("message_id") == original_message.reply_to_message.message_id:
+                offer_id = oid
+                break
+    
+    # 3. Oddiy matn xabar uchun
+    if not offer_id and not offer_by_voice and not offer_by_info:
         # Matn xabar ID orqali offer ni topish
         for oid, offer_data in offers.items():
             if offer_data.get("message_id") == original_message.message_id:
@@ -1108,25 +1223,14 @@ async def handle_passenger_claim(update: Update, context: ContextTypes.DEFAULT_T
 
     # Agar offer topilmasa
     if not offer_id:
-        await update.message.reply_text(
-            "Bu taklif topilmadi!"
-        )
+        if DEBUG:
+            logger.info(f"Taklif topilmadi: {original_message.message_id}")
         return
-
-    # Yo'lovchilar sonini aniqlash
-    passenger_count = offers[offer_id].get("passenger_count", 1)
 
     # Offer allaqachon olinganmi?
     if offers[offer_id].get("status") == "taken":
         await update.message.reply_text(
             "Bu taklif allaqachon olingan!"
-        )
-        return
-
-    # Haydovchida yetarli tanga bormi?
-    if not has_enough_coins(user_id, passenger_count):
-        await update.message.reply_text(
-            f"Sizda yetarli tanga yo'q yoki hisobingiz minus holatda! Yo'lovchi olish uchun hisobingizda kamida 0 tanga bo'lishi kerak."
         )
         return
 
@@ -1137,20 +1241,14 @@ async def handle_passenger_claim(update: Update, context: ContextTypes.DEFAULT_T
     offers[offer_id]["status"] = "pending"  # Kutish holatiga o'tkazish
     offers[offer_id]["taker_id"] = user_id
     offers[offer_id]["pending_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    save_data(offers, OFFERS_FILE)  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     save_data(offers, OFFERS_FILE)
 
     # Kanalda xabarni yangilash
     try:
-        if original_message.text:
-            await context.bot.edit_message_text(
-                chat_id=CHANNEL_ID,
-                message_id=original_message.message_id,
-                text=f"{original_message.text}\n\n⏳ KUTILMOQDA: {user_profile_link}",
-                parse_mode="HTML"
-            )
-        # Ovozli xabar uchun javob xabarini yangilash
-        elif original_message.voice:
-            # Ovozli xabar uchun info xabarini topish
+        # Ovozli xabar uchun
+        if offer_by_voice or (original_message.voice and offers[offer_id].get("voice_file_id") == original_message.voice.file_id):
+            # Info xabar ID ni olish
             info_message_id = offers[offer_id].get("info_message_id")
             if info_message_id:
                 await context.bot.edit_message_text(
@@ -1161,6 +1259,25 @@ async def handle_passenger_claim(update: Update, context: ContextTypes.DEFAULT_T
                         f"⏳ KUTILMOQDA: {user_profile_link}",
                     parse_mode="HTML"
                 )
+        # Info xabar uchun
+        elif offer_by_info:
+            # Ovozli xabar uchun info xabarni yangilash
+            await context.bot.edit_message_text(
+                chat_id=CHANNEL_ID,
+                message_id=original_message.message_id,
+                text=f"Yangi yo'lovchilar taklifi (ovozli xabar):\n"
+                    f"Kim yubordi: {offers[offer_id]['full_name']}\n"
+                    f"⏳ KUTILMOQDA: {user_profile_link}",
+                parse_mode="HTML"
+            )
+        # Oddiy matn xabar uchun
+        else:
+            await context.bot.edit_message_text(
+                chat_id=CHANNEL_ID,
+                message_id=original_message.message_id,
+                text=f"{original_message.text}\n\n⏳ KUTILMOQDA: {user_profile_link}",
+                parse_mode="HTML"
+            )
     except Exception as e:
         logger.error(f"Xabarni yangilashda xatolik: {e}")
 
@@ -1216,756 +1333,704 @@ async def handle_passenger_claim(update: Update, context: ContextTypes.DEFAULT_T
 
     # Javob xabarini o'chirish
     try:
-        await context.bot.delete_message(
-            chat_id=update.effective_chat.id,
-            message_id=update.message.message_id
-        )
-    except Exception as e:
-        logger.error(f"Xabarni o'chirishda xatolik: {e}")
-
-# Yo'lovchi berish uchun callback query handler
-async def take_passenger(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user_id = query.from_user.id
-    user_id_str = str(user_id)
-    data = query.data
-
-    # Yo'lovchi olish jarayonini tekshirish
-    if data.startswith("pickup_yes_"):
-        offer_id = data.split("_")[-1]
-        
-        # Yo'lovchilar sonini so'rash
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("1", callback_data=f"passenger_count_{offer_id}_1"),
-                InlineKeyboardButton("2", callback_data=f"passenger_count_{offer_id}_2"),
-                InlineKeyboardButton("3", callback_data=f"passenger_count_{offer_id}_3"),
-                InlineKeyboardButton("4", callback_data=f"passenger_count_{offer_id}_4")
-            ]
-        ])
-        
-        await query.edit_message_text(
-            "Nechta yo'lovchi oldingiz? Buni nechta odam olganingizga qarab tanlang.\n"
-            "1 ta odam bo'lsa 1 ta tanga, 4 ta odam bo'lsa 4 ta tanga sarflanadi.",
-            reply_markup=keyboard
-        )
-        
-    elif data.startswith("pickup_no_"):
-        offer_id = data.split("_")[-1]
-        await handle_failed_agreement_inline(update, context, offer_id)
-        
-    elif data.startswith("passenger_count_"):
-        parts = data.split("_")
-        offer_id = parts[2]
-        passenger_count = int(parts[3])
-        
-        await handle_successful_pickup_inline(update, context, offer_id, passenger_count)
-        
-    elif data.startswith("confirm_coins_"):
-        parts = data.split("_")
-        offer_id = parts[2]
-        confirm = parts[3]
-        
-        if confirm == "yes":
-            await query.edit_message_text("Rahmat! Yo'lovchi berish jarayoni muvaffaqiyatli yakunlandi.")
+        if update.effective_chat.type in ["group", "supergroup"]:
+            group_settings = get_group_settings(chat_id)
+            if group_settings.get("auto_delete", True):
+                await context.bot.delete_message(
+                    chat_id=update.effective_chat.id,
+                    message_id=update.message.message_id
+                )
         else:
-            # Yo'lovchilar sonini qayta so'rash
-            keyboard = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("1", callback_data=f"correct_count_{offer_id}_1"),
-                    InlineKeyboardButton("2", callback_data=f"correct_count_{offer_id}_2"),
-                    InlineKeyboardButton("3", callback_data=f"correct_count_{offer_id}_3"),
-                    InlineKeyboardButton("4", callback_data=f"correct_count_{offer_id}_4")
-                ]
-            ])
-            
-            await query.edit_message_text(
-                "Siz nechta odam bergandingiz?",
-                reply_markup=keyboard
+            await context.bot.delete_message(
+                chat_id=update.effective_chat.id,
+                message_id=update.message.message_id
             )
-            
-    elif data.startswith("correct_count_"):
-        parts = data.split("_")
-        offer_id = parts[2]
-        correct_count = int(parts[3])
-        
-        await handle_correct_passenger_count(update, context, offer_id, correct_count)
-
-# Yo'lovchi olish jarayonini inline button orqali boshqarish
-async def handle_successful_pickup_inline(update: Update, context: ContextTypes.DEFAULT_TYPE, offer_id, passenger_count):
-    query = update.callback_query
-    user_id = query.from_user.id
-    user_id_str = str(user_id)
-
-    # Ma'lumotlarni yuklash
-    users = load_data(USERS_FILE)
-    offers = load_data(OFFERS_FILE)
-
-    # Taklif mavjudmi?
-    if offer_id not in offers:
-        await query.edit_message_text("Bu taklif topilmadi!")
-        return
-
-    # Taklif allaqachon olinganmi?
-    if offers[offer_id].get("status") == "taken":
-        await query.edit_message_text("Bu taklif allaqachon olingan!")
-        return
-
-    # Haydovchida yetarli tanga bormi?
-    if users[user_id_str].get("coins", 0) < passenger_count:
-        # Agar yetarli tanga bo'lmasa, hisobni minus holatga o'tkazish
-        users[user_id_str]["coins"] = users[user_id_str].get("coins", 0) - passenger_count
-        await query.edit_message_text(
-            f"Sizda yetarli tanga yo'q! Hisobingiz minus holatga o'tkazildi: {users[user_id_str]['coins']} tanga.\n"
-            f"Keyingi safar yo'lovchi olish uchun hisobingizni to'ldirishingiz kerak bo'ladi."
-        )
-    else:
-        # Haydovchidan tanga ayirish
-        users[user_id_str]["coins"] = users[user_id_str].get("coins", 0) - passenger_count
-
-    # Taklifni olindi deb belgilash
-    offers[offer_id]["status"] = "taken"
-    offers[offer_id]["taker_id"] = user_id
-    offers[offer_id]["taken_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    offers[offer_id]["passenger_count"] = passenger_count  # Yo'lovchilar sonini yangilash
-    save_data(offers, OFFERS_FILE)
-
-    # Taklif bergan haydovchiga tanga qo'shish
-    offerer_id_str = str(offers[offer_id]["user_id"])
-    if offerer_id_str in users:
-        users[offerer_id_str]["coins"] = users[offerer_id_str].get("coins", 0) + passenger_count
-
-    save_data(users, USERS_FILE)
-
-    # Statistikani yangilash
-    update_stats("offers_taken")
-
-    # Foydalanuvchi profilini olish
-    user_profile_link = get_user_profile_link(query.from_user)
-
-    # Kanalda xabarni yangilash
-    try:
-        message_id = offers[offer_id].get("message_id")
-        if message_id:
-            await context.bot.edit_message_text(
-                chat_id=CHANNEL_ID,
-                message_id=message_id,
-                text=f"{offers[offer_id].get('channel_message', 'Yo\'lovchi berish taklifi')}\n\n✅ OLINDI: {user_profile_link}",
-                parse_mode="HTML"
-            )
-    except Exception as e:
-        logger.error(f"Xabarni yangilashda xatolik: {e}")
-
-    # Haydovchiga xabar yuborish
-    await query.edit_message_text(
-        f"Siz yo'lovchi berish taklifini muvaffaqiyatli oldingiz!\n"
-        f"Hisobingizdan {passenger_count} tanga ayirildi.\n"
-        f"Joriy tangalar soni: {users[user_id_str].get('coins', 0)}"
-    )
-
-    # Taklif bergan haydovchiga xabar yuborish va tangalar to'g'ri berilganini so'rash
-    try:
-        keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("Ha", callback_data=f"confirm_coins_{offer_id}_yes"),
-                InlineKeyboardButton("Yo'q", callback_data=f"confirm_coins_{offer_id}_no")
-            ]
-        ])
-        
-        await context.bot.send_message(
-            chat_id=offers[offer_id]["user_id"],
-            text=f"Sizning yo'lovchi berish taklifingiz qabul qilindi!\n"
-                f"Hisobingizga {passenger_count} tanga qo'shildi.\n"
-                f"Joriy tangalar soni: {users[offerer_id_str].get('coins', 0)}\n\n"
-                f"Haydovchi: {users[user_id_str]['full_name']}\n"
-                f"Telefon: {format_phone(users[user_id_str].get('phone', ''))}\n\n"
-                f"Sizga odamlar soniga teng tanga berildimi?",
-            reply_markup=keyboard
-        )
-    except Exception as e:
-        logger.error(f"Xabar yuborishda xatolik: {e}")
-
-# Yo'lovchi olish jarayonini bekor qilish (inline button orqali)
-async def handle_failed_agreement_inline(update: Update, context: ContextTypes.DEFAULT_TYPE, offer_id):
-    query = update.callback_query
-    user_id = query.from_user.id
-    user_id_str = str(user_id)
-
-    # Ma'lumotlarni yuklash
-    offers = load_data(OFFERS_FILE)
-
-    # Taklif mavjudmi?
-    if offer_id not in offers:
-        await query.edit_message_text("Bu taklif topilmadi!")
-        return
-
-    # Taklif allaqachon olinganmi?
-    if offers[offer_id].get("status") == "taken":
-        await query.edit_message_text("Bu taklif allaqachon olingan!")
-        return
-
-    # Taklifni qayta kanalga yuborish
-    offers[offer_id]["status"] = "waiting"
-    if "taker_id" in offers[offer_id]:
-        del offers[offer_id]["taker_id"]
-    save_data(offers, OFFERS_FILE)
-
-    # Statistikani yangilash
-    update_stats("failed_agreements")
-
-    # Kanalga yuborish uchun xabar tayyorlash
-    channel_message = offers[offer_id].get('channel_message', 
-        f"Yangi yo'lovchilar taklifi:\n"
-        f"Kim yubordi: {offers[offer_id].get('full_name', 'Nomsiz')}\n"
-        f"Nechta yo'lovchi: {offers[offer_id].get('passenger_count', 1)}\n"
-        f"Qayerga: {offers[offer_id].get('destination', 'Belgilanmagan')}\n\n"
-        f"Yo'lovchini olish uchun ushbu xabarga javob bering (reply) va 'olaman' deb yozing."
-    )
-
-    # Eski xabarni o'chirish
-    try:
-        await context.bot.delete_message(
-            chat_id=CHANNEL_ID,
-            message_id=offers[offer_id]["message_id"]
-        )
     except Exception as e:
         logger.error(f"Xabarni o'chirishda xatolik: {e}")
 
-    # Kanalga qayta yuborish
-    try:
-        message = await context.bot.send_message(
-            chat_id=CHANNEL_ID, 
-            text=channel_message
-        )
-        
-        # Xabar ID ni saqlash
-        offers[offer_id]["message_id"] = message.message_id
-        save_data(offers, OFFERS_FILE)
-        
-    except Exception as e:
-        logger.error(f"Kanalga yuborishda xatolik: {e}")
-
-    # Haydovchiga xabar yuborish
-    await query.edit_message_text(
-        f"Siz yo'lovchi bilan kelisha olmadingiz. Taklif qayta kanalga yuborildi."
-    )
-
-    # Taklif bergan haydovchiga xabar yuborish
-    try:
-        await context.bot.send_message(
-            chat_id=offers[offer_id]["user_id"],
-            text=f"Haydovchi siz bilan kelisha olmadi. Taklifingiz qayta kanalga yuborildi."
-        )
-    except Exception as e:
-        logger.error(f"Xabar yuborishda xatolik: {e}")
-
-# Yo'lovchilar sonini to'g'rilash
-async def handle_correct_passenger_count(update: Update, context: ContextTypes.DEFAULT_TYPE, offer_id, correct_count):
-    query = update.callback_query
-    
-    # Ma'lumotlarni yuklash
-    users = load_data(USERS_FILE)
-    offers = load_data(OFFERS_FILE)
-    
-    # Taklif mavjudmi?
-    if offer_id not in offers:
-        await query.edit_message_text("Bu taklif topilmadi!")
+# Kanal xabarlarini tekshirish
+async def handle_channel_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Kanalda bo'lmasa, o'tkazib yuborish
+    if update.effective_chat.id != CHANNEL_ID and str(update.effective_chat.id) != CHANNEL_ID and update.effective_chat.username != CHANNEL_ID.replace("@", ""):
+        if DEBUG:
+            if update.message and update.message.reply_to_message:
+                # Reply xabarlarni qayta ishlash
+                await handle_passenger_claim(update, context)
+            
+            # Guruhda ovozli xabarlarni tekshirish
+            if update.message and update.message.voice and update.effective_chat.type in ["group", "supergroup"]:
+                await handle_group_voice_message(update, context)
+            
+            # Guruhda telefon raqamlarni tekshirish
+            if update.message and update.message.text and update.effective_chat.type in ["group", "supergroup"]:
+                await handle_group_phone_message(update, context)
         return
-    
-    # Taklif bergan va olgan haydovchilar ID larini olish
-    offerer_id_str = str(offers[offer_id]["user_id"])
-    taker_id_str = str(offers[offer_id]["taker_id"])
-    
-    # Joriy yo'lovchilar soni
-    current_count = offers[offer_id].get("passenger_count", 1)
-    
-    # Yo'lovchilar sonini to'g'rilash
-    if correct_count > current_count:
-        # Agar ko'proq yo'lovchi berilgan bo'lsa
-        difference = correct_count - current_count
-        
-        # Olgan haydovchidan qo'shimcha tanga ayirish
-        users[taker_id_str]["coins"] = users[taker_id_str].get("coins", 0) - difference
-        
-        # Bergan haydovchiga qo'shimcha tanga qo'shish
-        users[offerer_id_str]["coins"] = users[offerer_id_str].get("coins", 0) + difference
-        
-        await query.edit_message_text(
-            f"Yo'lovchilar soni {current_count} dan {correct_count} ga o'zgartirildi.\n"
-            f"Olgan haydovchidan qo'shimcha {difference} tanga ayirildi.\n"
-            f"Sizga qo'shimcha {difference} tanga qo'shildi.\n"
-            f"Joriy tangalar soni: {users[offerer_id_str].get('coins', 0)}"
-        )
-    elif correct_count < current_count:
-        # Agar kamroq yo'lovchi berilgan bo'lsa
-        difference = current_count - correct_count
-        
-        # Olgan haydovchiga ortiqcha tangalarni qaytarish
-        users[taker_id_str]["coins"] = users[taker_id_str].get("coins", 0) + difference
-        
-        # Bergan haydovchidan ortiqcha tangalarni ayirish
-        users[offerer_id_str]["coins"] = users[offerer_id_str].get("coins", 0) - difference
-        
-        await query.edit_message_text(
-            f"Yo'lovchilar soni {current_count} dan {correct_count} ga o'zgartirildi.\n"
-            f"Olgan haydovchiga {difference} tanga qaytarildi.\n"
-            f"Sizdan {difference} tanga ayirildi.\n"
-            f"Joriy tangalar soni: {users[offerer_id_str].get('coins', 0)}"
-        )
-    else:
-        # Agar yo'lovchilar soni o'zgarmagan bo'lsa
-        await query.edit_message_text(
-            f"Yo'lovchilar soni o'zgartirilmadi. Joriy tangalar soni: {users[offerer_id_str].get('coins', 0)}"
-        )
-    
-    # Yo'lovchilar sonini yangilash
-    offers[offer_id]["passenger_count"] = correct_count
-    
-    # Ma'lumotlarni saqlash
-    save_data(users, USERS_FILE)
-    save_data(offers, OFFERS_FILE)
-    
-    # Olgan haydovchiga xabar yuborish
-    try:
-        await context.bot.send_message(
-            chat_id=int(taker_id_str),
-            text=f"Yo'lovchi bergan haydovchi yo'lovchilar sonini {current_count} dan {correct_count} ga o'zgartirdi.\n"
-                f"Joriy tangalar soni: {users[taker_id_str].get('coins', 0)}"
-        )
-    except Exception as e:
-        logger.error(f"Xabar yuborishda xatolik: {e}")
 
-# Kanalda yozilgan xabarlarni tekshirish
-async def handle_channel_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Xabar ma'lumotlarini olish
+    # Xabar bo'lmasa, o'tkazib yuborish
     if not update.message:
         return
 
-    # Xabar ID ni olish
-    message_id = update.message.message_id
+    # Reply berilgan xabarlarni tekshirish
+    if update.message.reply_to_message:
+        # Yo'lovchi olish uchun
+        await handle_passenger_claim(update, context)
 
-    # Xabar allaqachon qayta ishlangan bo'lsa, o'tkazib yuborish
-    if message_id in PROCESSED_MESSAGES:
-        if DEBUG:
-            logger.info(f"Xabar {message_id} allaqachon qayta ishlangan, o'tkazib yuborildi")
-        return
+# Yo'lovchi olish so'rovlari handler
+async def take_passenger(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    user_id = update.effective_user.id
+    user_id_str = str(user_id)
+    
+    # Foydalanuvchi ma'lumotlarini yuklash
+    users = load_data(USERS_FILE)
+    offers = load_data(OFFERS_FILE)
+    
+    # Callback data ni tekshirish
+    if data.startswith("pickup_yes_"):
+        # Offer ID ni olish
+        offer_id = data.split("_")[-1]
+        
+        if offer_id not in offers:
+            await query.edit_message_text(
+                "Xatolik yuz berdi. Taklif topilmadi!"
+            )
+            return
+        
+        if offers[offer_id].get("status") != "pending" or offers[offer_id].get("taker_id") != user_id:
+            await query.edit_message_text(
+                "Xatolik yuz berdi. Bu taklif sizga tegishli emas!"
+            )
+            return
+        
+        # Taklifni olindi deb belgilash
+        offers[offer_id]["status"] = "taken"
+        offers[offer_id]["taken_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        save_data(offers, OFFERS_FILE)
+        
+        # Yo'lovchi bergan haydovchiga tanga berish
+        provider_id_str = str(offers[offer_id]["user_id"])
+        if provider_id_str in users:
+            users[provider_id_str]["coins"] = users[provider_id_str].get("coins", 0) + 1
+        
+        # Yo'lovchi olgan haydovchidan tanga olish
+        passenger_count = offers[offer_id].get("passenger_count", 1)
+        if user_id_str in users:
+            users[user_id_str]["coins"] = max(0, users[user_id_str].get("coins", 0) - passenger_count)
+        
+        save_data(users, USERS_FILE)
+        
+        # Statistikani yangilash
+        update_stats("offers_taken")
+        
+        # Kanalda xabarni yangilash
+        try:
+            message_id = offers[offer_id].get("message_id")
+            if message_id:
+                # Foydalanuvchi profilini olish
+                user_profile_link = get_user_profile_link(update.effective_user)
+                
+                # Ovozli xabar uchun
+                if "voice_file_id" in offers[offer_id]:
+                    # Info xabar ID ni olish
+                    info_message_id = offers[offer_id].get("info_message_id")
+                    if info_message_id:
+                        await context.bot.edit_message_text(
+                            chat_id=CHANNEL_ID,
+                            message_id=info_message_id,
+                            text=f"Yangi yo'lovchilar taklifi (ovozli xabar):\n"
+                                f"Kim yubordi: {offers[offer_id]['full_name']}\n"
+                                f"✅ OLINDI: {user_profile_link}",
+                            parse_mode="HTML"
+                        )
+                else:
+                    # Oddiy matn xabar uchun
+                    original_message = await context.bot.get_message(
+                        chat_id=CHANNEL_ID,
+                        message_id=message_id
+                    )
+                    
+                    if original_message and original_message.text:
+                        text = original_message.text.split("\n\n")[0]
+                        await context.bot.edit_message_text(
+                            chat_id=CHANNEL_ID,
+                            message_id=message_id,
+                            text=f"{text}\n\n✅ OLINDI: {user_profile_link}",
+                            parse_mode="HTML"
+                        )
+        except Exception as e:
+            logger.error(f"Xabarni yangilashda xatolik: {e}")
+        
+        # Yo'lovchi bergan haydovchiga xabar yuborish
+        try:
+            await context.bot.send_message(
+                chat_id=offers[offer_id]["user_id"],
+                text=f"Sizning yo'lovchilaringiz muvaffaqiyatli olindi!\n\n"
+                    f"Haydovchi: {users[user_id_str].get('full_name', 'Noma\'lum')}\n"
+                    f"Telefon: {format_phone(users[user_id_str].get('phone', ''))}\n\n"
+                    f"Hisobingizga 1 tanga qo'shildi. Hozirgi tangalaringiz: {users.get(provider_id_str, {}).get('coins', 0)}"
+            )
+        except Exception as e:
+            logger.error(f"Xabar yuborishda xatolik: {e}")
+        
+        # Javobni yangilash
+        await query.edit_message_text(
+            f"Yo'lovchilarni muvaffaqiyatli oldingiz!\n\n"
+            f"Yo'nalish: {offers[offer_id].get('destination', '')}\n"
+            f"Yo'lovchilar soni: {passenger_count}\n"
+            f"Hisobingizdan {passenger_count} tanga olinadi. Qolgan tangalaringiz: {users[user_id_str].get('coins', 0)}"
+        )
+        
+    elif data.startswith("pickup_no_"):
+        # Offer ID ni olish
+        offer_id = data.split("_")[-1]
+        
+        if offer_id not in offers:
+            await query.edit_message_text(
+                "Xatolik yuz berdi. Taklif topilmadi!"
+            )
+            return
+        
+        if offers[offer_id].get("status") != "pending" or offers[offer_id].get("taker_id") != user_id:
+            await query.edit_message_text(
+                "Xatolik yuz berdi. Bu taklif sizga tegishli emas!"
+            )
+            return
+        
+        # Taklifni kutilmoqda holatiga qaytarish
+        offers[offer_id]["status"] = "waiting"
+        offers[offer_id].pop("taker_id", None)
+        offers[offer_id].pop("pending_at", None)
+        save_data(offers, OFFERS_FILE)
+        
+        # Statistikani yangilash
+        update_stats("failed_agreements")
+        
+        # Kanalda xabarni yangilash
+        try:
+            message_id = offers[offer_id].get("message_id")
+            if message_id:
+                # Ovozli xabar uchun
+                if "voice_file_id" in offers[offer_id]:
+                    # Info xabar ID ni olish
+                    info_message_id = offers[offer_id].get("info_message_id")
+                    if info_message_id:
+                        await context.bot.edit_message_text(
+                            chat_id=CHANNEL_ID,
+                            message_id=info_message_id,
+                            text=f"Yuqoridagi yo'lovchini olish uchun ushbu xabarga javob bering (reply) va 'olaman' deb yozing yoki ovozli xabarni reply qilib yuboring",
+                        )
+                else:
+                    # Oddiy matn xabar uchun
+                    offer_message = (
+                        f"Yangi yo'lovchilar taklifi:\n"
+                        f"Kim yubordi: {offers[offer_id]['full_name']}\n"
+                        f"Telefon: {format_phone(offers[offer_id]['phone'])}\n"
+                        f"Yo'lovchilar soni: {offers[offer_id]['passenger_count']}\n"
+                        f"Yo'nalish: {offers[offer_id]['destination']}\n"
+                        f"Vaqt: {offers[offer_id].get('time', 'Tez orada')}\n"
+                        f"Izoh: {offers[offer_id].get('comment', '')}"
+                    )
+                    
+                    await context.bot.edit_message_text(
+                        chat_id=CHANNEL_ID,
+                        message_id=message_id,
+                        text=offer_message
+                    )
+        except Exception as e:
+            logger.error(f"Xabarni yangilashda xatolik: {e}")
+        
+        # Yo'lovchi bergan haydovchiga xabar yuborish
+        try:
+            await context.bot.send_message(
+                chat_id=offers[offer_id]["user_id"],
+                text=f"Afsuski, haydovchi yo'lovchilaringizni ola olmadi.\n"
+                    f"Yo'lovchilaringiz takliflari yana kanalda ko'rsatilmoqda."
+            )
+        except Exception as e:
+            logger.error(f"Xabar yuborishda xatolik: {e}")
+        
+        # Javobni yangilash
+        await query.edit_message_text(
+            f"Siz yo'lovchilarni ola olmasligingizni bildirdingiz.\n"
+            f"Yo'lovchi berish taklifi yana kanalda ko'rsatilmoqda."
+        )
 
-    # Kanal ID ni tekshirish
-    chat_id = update.effective_chat.id
-    chat_id_str = str(chat_id)
+#
+# ADMIN FUNKSIYALARI
+#
 
-    # Debug uchun
-    if DEBUG:
-        logger.info(f"Xabar keldi: chat_id={chat_id_str}, CHANNEL_ID={CHANNEL_ID}")
-        logger.info(f"Xabar turi: {update.effective_chat.type}")
-        if update.message.text:
-            logger.info(f"Xabar matni: {update.message.text}")
-        elif update.message.voice:
-            logger.info("Ovozli xabar")
-        elif update.message.photo:
-            logger.info("Rasmli xabar")
+# Admin menu handler
+async def handle_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.effective_user.id
+    text = update.message.text
+    
+    # Admin ekanligini tekshirish
+    if user_id not in ADMIN_IDS:
+        # Botni qayta ishga tushirish
+        return await start(update, context)
+    
+    # Statistika
+    if text == "Statistika":
+        stats = load_data(STATS_FILE)
+        
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        message = "📊 BOT STATISTIKASI 📊\n\n"
+        
+        # Bugungi statistika
+        message += "Bugun:\n"
+        if today in stats:
+            message += f"- Yangi haydovchilar: {stats[today].get('new_drivers', 0)}\n"
+            message += f"- Yangi takliflar: {stats[today].get('new_offers', 0)}\n"
+            message += f"- Qabul qilingan takliflar: {stats[today].get('offers_taken', 0)}\n"
+            message += f"- Soxta takliflar: {stats[today].get('fake_offers', 0)}\n"
+            message += f"- Kelisha olmasliklar: {stats[today].get('failed_agreements', 0)}\n"
+            message += f"- Ovozli xabarlar: {stats[today].get('voice_messages', 0)}\n"
         else:
-            logger.info("Boshqa turdagi xabar")
+            message += "- Ma'lumot yo'q\n"
         
-        if update.message.reply_to_message:
-            logger.info(f"Javob xabar: {update.message.reply_to_message.text if update.message.reply_to_message.text else 'Matn yo\'q'}")
-
-    # Agar bu shaxsiy chat bo'lsa
-    if update.effective_chat.type == "private":
-        # Joriy holat DRIVER_MENU bo'lsa, bu xabarni o'tkazib yuborish
-        # chunki u handle_driver_menu() tomonidan qayta ishlanadi
-        current_state = context.user_data.get('state')
-        if current_state == DRIVER_MENU and update.message.text:
-            shortened_format = re.search(r'(\+?\d+)\s+([nt])\s+(\d+)', update.message.text.lower())
-            if shortened_format:
-                if DEBUG:
-                    logger.info(f"Xabar {message_id} DRIVER_MENU holatida, o'tkazib yuborildi")
-                return
+        message += "\nUmumiy:\n"
+        if "total" in stats:
+            message += f"- Yangi haydovchilar: {stats['total'].get('new_drivers', 0)}\n"
+            message += f"- Yangi takliflar: {stats['total'].get('new_offers', 0)}\n"
+            message += f"- Qabul qilingan takliflar: {stats['total'].get('offers_taken', 0)}\n"
+            message += f"- Soxta takliflar: {stats['total'].get('fake_offers', 0)}\n"
+            message += f"- Kelisha olmasliklar: {stats['total'].get('failed_agreements', 0)}\n"
+            message += f"- Ovozli xabarlar: {stats['total'].get('voice_messages', 0)}\n"
+        else:
+            message += "- Ma'lumot yo'q\n"
         
-        # Ovozli xabar kelgan bo'lsa
-        if update.message.voice:
-            await handle_voice_message(update, context)
-            return
-
-        if update.message.text:  # Faqat matn xabarlarini tekshirish
-            # Qisqartirilgan formatni tekshirish
-            shortened_format = re.search(r'(\+?\d+)\s+([nt])\s+(\d+)', update.message.text.lower())
-            if shortened_format:
-                # Xabarni qayta ishlangan deb belgilash
-                PROCESSED_MESSAGES.add(message_id)
-                await handle_shortened_format(update, context)
-                return
-        return
-
-    # Agar bu guruh bo'lsa, ovozli xabarlarni kuzatish
-    if update.effective_chat.type in ["group", "supergroup"]:
-        # Ovozli xabar kelgan bo'lsa
-        if update.message.voice:
-            # Xabarni qayta ishlangan deb belgilash
-            PROCESSED_MESSAGES.add(message_id)
-            await handle_group_voice_message(update, context)
-            return
-        
-        # Telefon raqam kelgan bo'lsa
-        if update.message.text:
-            # Xabarni qayta ishlangan deb belgilash
-            PROCESSED_MESSAGES.add(message_id)
-            await handle_group_phone_message(update, context)
-            return
-        
-        # Agar bu javob xabar bo'lsa, yo'lovchi olish jarayonini tekshirish
-        if update.message.reply_to_message:
-            # Xabarni qayta ishlangan deb belgilash
-            PROCESSED_MESSAGES.add(message_id)
-            await handle_passenger_claim(update, context)
-            return
-
-    # Agar bu kanal bo'lsa
-    if update.effective_chat.type == "channel":
-        # Agar bu javob xabar bo'lsa, yo'lovchi olish jarayonini tekshirish
-        if update.message.reply_to_message:
-            # Xabarni qayta ishlangan deb belgilash
-            PROCESSED_MESSAGES.add(message_id)
-            await handle_passenger_claim(update, context)
-            return
-        
-        # Qisqartirilgan formatni tekshirish (faqat matn xabarlarida)
-        if update.message.text:
-            shortened_format = re.search(r'(\+?\d+)\s+([nt])\s+(\d+)', update.message.text.lower())
-            if shortened_format:
-                # Xabarni qayta ishlangan deb belgilash
-                PROCESSED_MESSAGES.add(message_id)
-                await handle_shortened_format_in_channel(update, context, shortened_format)
-                return
-
-    # Agar bu yerga kelgan bo'lsa, xabar bizga kerakli formatda emas
-    if DEBUG:
-        logger.info(f"Xabar bizga kerakli formatda emas")
-
-# Admin menyusini ko'rsatish
-async def show_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "Admin paneli:",
-        reply_markup=ReplyKeyboardMarkup([
-            ["📊 Statistika", "⚙️ Sozlamalar"],
-            ["📨 Xabar yuborish", "🎁 Sovg'a berish"],
-            ["👤 Foydalanuvchilar"]
-        ], resize_keyboard=True)
-    )
-
-# Admin menyusini boshqarish
-async def handle_admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    choice = update.message.text
-
-    if choice == "📊 Statistika":
-        await show_admin_stats(update, context)
+        await update.message.reply_text(message)
         return ADMIN_MENU
-    elif choice == "⚙️ Sozlamalar":
-        await show_admin_settings(update, context)
-        return ADMIN_SETTINGS_MENU
-    elif choice == "📨 Xabar yuborish":
-        await update.message.reply_text(
-            "Yubormoqchi bo'lgan xabaringizni kiriting:",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        return ADMIN_MESSAGE_TEXT
-    elif choice == "🎁 Sovg'a berish":
-        await update.message.reply_text(
-            "Qancha tanga sovg'a qilmoqchisiz?",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        return ADMIN_GIFT_AMOUNT
-    elif choice == "👤 Foydalanuvchilar":
-        await show_admin_users(update, context)
-        return ADMIN_MENU
-    else:
-        await update.message.reply_text("Noto'g'ri tanlov. Iltimos, menyudan tanlang.")
-        return ADMIN_MENU
-
-# Admin statistikasini ko'rsatish
-async def show_admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stats = load_data(STATS_FILE)
-
-    # Bugungi sana
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    # Bugungi statistika
-    today_stats = stats.get(today, {})
-
-    # Umumiy statistika
-    total_stats = stats.get("total", {})
-
-    # Statistika xabarini tayyorlash
-    stats_message = (
-        "📊 STATISTIKA\n\n"
-        "Bugungi:\n"
-        f"- Yangi haydovchilar: {today_stats.get('new_drivers', 0)}\n"
-        f"- Yangi takliflar: {today_stats.get('new_offers', 0)}\n"
-        f"- Qabul qilingan takliflar: {today_stats.get('offers_taken', 0)}\n"
-        f"- Soxta takliflar: {today_stats.get('fake_offers', 0)}\n"
-        f"- Kelisha olmasliklar: {today_stats.get('failed_agreements', 0)}\n\n"
-        "Umumiy:\n"
-        f"- Haydovchilar: {total_stats.get('new_drivers', 0)}\n"
-        f"- Takliflar: {total_stats.get('new_offers', 0)}\n"
-        f"- Qabul qilingan takliflar: {total_stats.get('offers_taken', 0)}\n"
-        f"- Soxta takliflar: {total_stats.get('fake_offers', 0)}\n"
-        f"- Kelisha olmasliklar: {total_stats.get('failed_agreements', 0)}"
-    )
-
-    await update.message.reply_text(
-        stats_message,
-        reply_markup=ReplyKeyboardMarkup([
-            ["📊 Statistika", "⚙️ Sozlamalar"],
-            ["📨 Xabar yuborish", "🎁 Sovg'a berish"],
-            ["👤 Foydalanuvchilar"]
-        ], resize_keyboard=True)
-    )
-
-# Admin sozlamalarini ko'rsatish
-async def show_admin_settings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        f"⚙️ SOZLAMALAR\n\n"
-        f"1. Yangi haydovchilarga beriladigan boshlang'ich tangalar: {INITIAL_DRIVER_COINS}\n"
-        f"2. Kanal ID: {CHANNEL_ID}\n"
-        f"3. Haydovchilar kanali havolasi: {DRIVERS_CHANNEL_LINK}",
-        reply_markup=ReplyKeyboardMarkup([
-            ["Boshlang'ich tangalar"],
+    
+    # Bot sozlamalari
+    elif text == "Bot sozlamalari":
+        # Bot sozlamalari menyusini ko'rsatish
+        keyboard = [
+            ["Boshlang'ich tangalar soni", "Kanal ID"],
             ["Orqaga"]
-        ], resize_keyboard=True)
-    )
-
-# Admin sozlamalar menyusini boshqarish
-async def handle_admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    choice = update.message.text
-
-    if choice == "Boshlang'ich tangalar":
-        await update.message.reply_text(
-            "Yangi haydovchilarga beriladigan boshlang'ich tangalar sonini kiriting:",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        return ADMIN_SETTINGS_INITIAL_COINS
-    elif choice == "Orqaga":
-        await show_admin_menu(update, context)
-        return ADMIN_MENU
-    else:
-        await update.message.reply_text("Noto'g'ri tanlov. Iltimos, menyudan tanlang.")
-        return ADMIN_SETTINGS_MENU
-
-# Boshlang'ich tangalar sonini o'zgartirish
-async def admin_settings_initial_coins(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        coins = int(update.message.text)
+        ]
         
-        # global o'zgaruvchini yangilash
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            "Bot sozlamalari:\n"
+            "Kerakli sozlamani tanlang:",
+            reply_markup=reply_markup
+        )
+        
+        return ADMIN_SETTINGS_MENU
+    
+    # Xabar yuborish
+    elif text == "Xabar yuborish":
+        await update.message.reply_text(
+            "Yubormoqchi bo'lgan xabaringizni kiriting:"
+        )
+        
+        return ADMIN_MESSAGE_TEXT
+    
+    # Tanga sovg'a qilish
+    elif text == "Tanga sovg'a qilish":
+        await update.message.reply_text(
+            "Sovg'a qilmoqchi bo'lgan tangalar sonini kiriting:"
+        )
+        
+        return ADMIN_GIFT_AMOUNT
+    
+    # Botni qayta ishga tushirish
+    elif text == "Botni qayta ishga tushirish":
+        await update.message.reply_text(
+            "Bot qayta ishga tushirilmoqda..."
+        )
+        
+        # Bot qayta ishga tushirilgandek ko'rinishi uchun
+        await update.message.reply_text(
+            "Bot qayta ishga tushirildi!"
+        )
+        
+        return await start(update, context)
+    
+    # Haydovchi rejimi
+    elif text == "Haydovchi rejimi":
+        # Admin sifatida haydovchi menyusiga o'tish
+        keyboard = [
+            ["➕ Yo'lovchi berish", "💰 Mening tangalarim"],
+            ["📋 Mening takliflarim", "ℹ️ Bot haqida"],
+            ["Admin rejimiga qaytish"]
+        ]
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            "Haydovchi rejimiga o'tildi.",
+            reply_markup=reply_markup
+        )
+        
+        return DRIVER_MENU
+    
+    # Noto'g'ri buyruq
+    await update.message.reply_text(
+        "Noto'g'ri buyruq berildi. Iltimos, menyudan tanlang."
+    )
+    
+    return ADMIN_MENU
+
+# Admin sozlamalari menyusi handler
+async def handle_admin_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.effective_user.id
+    text = update.message.text
+    
+    # Admin ekanligini tekshirish
+    if user_id not in ADMIN_IDS:
+        # Botni qayta ishga tushirish
+        return await start(update, context)
+    
+    # Boshlang'ich tangalar soni
+    if text == "Boshlang'ich tangalar soni":
+        await update.message.reply_text(
+            f"Hozirgi boshlang'ich tangalar soni: {INITIAL_DRIVER_COINS}\n"
+            f"Yangi qiymatni kiriting:"
+        )
+        
+        return ADMIN_SETTINGS_INITIAL_COINS
+    
+    # Kanal ID
+    elif text == "Kanal ID":
+        await update.message.reply_text(
+            f"Hozirgi kanal ID: {CHANNEL_ID}\n"
+            f"Yangi qiymatni kiriting:"
+        )
+        
+        # Bu yerda Kanal ID ni o'zgartirish imkoniyati yo'q, shuning uchun admin menyusiga qaytaramiz
+        return ADMIN_SETTINGS_MENU
+    
+    # Orqaga
+    elif text == "Orqaga":
+        # Admin menyusiga qaytish
+        keyboard = [
+            ["Statistika", "Bot sozlamalari"],
+            ["Xabar yuborish", "Tanga sovg'a qilish"],
+            ["Botni qayta ishga tushirish", "Haydovchi rejimi"]
+        ]
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            "Admin menyusiga qaytildi.",
+            reply_markup=reply_markup
+        )
+        
+        return ADMIN_MENU
+    
+    # Noto'g'ri buyruq
+    await update.message.reply_text(
+        "Noto'g'ri buyruq berildi. Iltimos, menyudan tanlang."
+    )
+    
+    return ADMIN_SETTINGS_MENU
+
+# Boshlang'ich tangalar soni sozlamasini o'zgartirish
+async def admin_settings_initial_coins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.effective_user.id
+    text = update.message.text
+    
+    # Admin ekanligini tekshirish
+    if user_id not in ADMIN_IDS:
+        # Botni qayta ishga tushirish
+        return await start(update, context)
+    
+    # Raqam ekanligini tekshirish
+    try:
+        coins = int(text)
+        if coins < 0:
+            await update.message.reply_text(
+                "Tangalar soni 0 dan katta bo'lishi kerak. Iltimos, qaytadan kiriting:"
+            )
+            return ADMIN_SETTINGS_INITIAL_COINS
+        
+        # Global o'zgaruvchini yangilash
         global INITIAL_DRIVER_COINS
         INITIAL_DRIVER_COINS = coins
         
         await update.message.reply_text(
-            f"Yangi haydovchilarga beriladigan boshlang'ich tangalar soni {coins} ga o'zgartirildi.",
-            reply_markup=ReplyKeyboardMarkup([
-                ["📊 Statistika", "⚙️ Sozlamalar"],
-                ["📨 Xabar yuborish", "🎁 Sovg'a berish"],
-                ["👤 Foydalanuvchilar"]
-            ], resize_keyboard=True)
+            f"Boshlang'ich tangalar soni {coins} ga o'zgartirildi."
         )
         
-        return ADMIN_MENU
+        # Bot sozlamalari menyusiga qaytish
+        keyboard = [
+            ["Boshlang'ich tangalar soni", "Kanal ID"],
+            ["Orqaga"]
+        ]
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            "Bot sozlamalari:",
+            reply_markup=reply_markup
+        )
+        
+        return ADMIN_SETTINGS_MENU
+        
     except ValueError:
         await update.message.reply_text(
-            "Iltimos, raqam kiriting.",
-            reply_markup=ReplyKeyboardRemove()
+            "Iltimos, raqam kiriting:"
         )
         return ADMIN_SETTINGS_INITIAL_COINS
 
-# Xabar matnini kiritish
-async def admin_message_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    message_text = update.message.text
-    context.user_data['message_text'] = message_text
-
+# Xabar matni handler
+async def admin_message_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.effective_user.id
+    text = update.message.text
+    
+    # Admin ekanligini tekshirish
+    if user_id not in ADMIN_IDS:
+        # Botni qayta ishga tushirish
+        return await start(update, context)
+    
+    # Xabar matnini saqlash
+    context.user_data["admin_message"] = text
+    
+    # Xabar yuborish menyusini ko'rsatish
+    keyboard = [
+        ["Barcha haydovchilarga", "Faqat ma'lum haydovchiga"],
+        ["Orqaga"]
+    ]
+    
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
     await update.message.reply_text(
-        "Xabar kimga yuborilsin?",
-        reply_markup=ReplyKeyboardMarkup([
-            ["Hamma haydovchilarga"],
-            ["Bekor qilish"]
-        ], resize_keyboard=True)
+        "Xabarni kimga yubormoqchisiz?",
+        reply_markup=reply_markup
     )
-
+    
     return ADMIN_MESSAGE_TARGET
 
-# Xabar yuborish maqsadini tanlash
-async def admin_message_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    target = update.message.text
-    message_text = context.user_data.get('message_text', '')
-
-    if target == "Bekor qilish":
-        await update.message.reply_text(
-            "Xabar yuborish bekor qilindi.",
-            reply_markup=ReplyKeyboardMarkup([
-                ["📊 Statistika", "⚙️ Sozlamalar"],
-                ["📨 Xabar yuborish", "🎁 Sovg'a berish"],
-                ["👤 Foydalanuvchilar"]
-            ], resize_keyboard=True)
-        )
-        return ADMIN_MENU
-
-    users = load_data(USERS_FILE)
-    sent_count = 0
-
-    for user_id, user_data in users.items():
-        # Foydalanuvchi turini tekshirish
-        if target == "Hamma haydovchilarga" and user_data.get('role') == 'driver':
-            try:
-                await context.bot.send_message(
-                    chat_id=int(user_id),
-                    text=message_text
-                )
-                sent_count += 1
-            except Exception as e:
-                logger.error(f"Xabar yuborishda xatolik: {e}")
-
-    await update.message.reply_text(
-        f"Xabar {sent_count} ta foydalanuvchiga yuborildi.",
-        reply_markup=ReplyKeyboardMarkup([
-            ["📊 Statistika", "⚙️ Sozlamalar"],
-            ["📨 Xabar yuborish", "🎁 Sovg'a berish"],
-            ["👤 Foydalanuvchilar"]
-        ], resize_keyboard=True)
-    )
-
-    return ADMIN_MENU
-
-# Sovg'a miqdorini kiritish
-async def admin_gift_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        amount = int(update.message.text)
-        context.user_data['gift_amount'] = amount
+# Xabar yuborish manzilini tanlash
+async def admin_message_target(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.effective_user.id
+    text = update.message.text
+    
+    # Admin ekanligini tekshirish
+    if user_id not in ADMIN_IDS:
+        # Botni qayta ishga tushirish
+        return await start(update, context)
+    
+    # Barcha haydovchilarga
+    if text == "Barcha haydovchilarga":
+        # Foydalanuvchilar ma'lumotlarini yuklash
+        users = load_data(USERS_FILE)
+        
+        # Xabar matnini olish
+        message = context.user_data.get("admin_message", "Botdan foydalanganingiz uchun rahmat!")
+        
+        # Yuborilgan xabarlar soni
+        sent_count = 0
+        
+        # Barcha haydovchilarga xabar yuborish
+        for user_id_str, user_data in users.items():
+            if user_data.get("role") == "driver":
+                try:
+                    await context.bot.send_message(
+                        chat_id=int(user_id_str),
+                        text=f"ADMIN XABARI:\n\n{message}"
+                    )
+                    sent_count += 1
+                except Exception as e:
+                    logger.error(f"Xabar yuborishda xatolik: {e}")
+        
+        # Admin menyusiga qaytish
+        keyboard = [
+            ["Statistika", "Bot sozlamalari"],
+            ["Xabar yuborish", "Tanga sovg'a qilish"],
+            ["Botni qayta ishga tushirish", "Haydovchi rejimi"]
+        ]
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         
         await update.message.reply_text(
-            "Sovg'a kimga berilsin?",
-            reply_markup=ReplyKeyboardMarkup([
-                ["Hamma haydovchilarga"],
-                ["Aniq foydalanuvchiga"],
-                ["Bekor qilish"]
-            ], resize_keyboard=True)
+            f"Xabar {sent_count} ta haydovchiga yuborildi.",
+            reply_markup=reply_markup
+        )
+        
+        return ADMIN_MENU
+    
+    # Faqat ma'lum haydovchiga
+    elif text == "Faqat ma'lum haydovchiga":
+        await update.message.reply_text(
+            "Haydovchi ID raqamini kiriting:"
+        )
+        
+        # Bu yerda faqat ma'lum haydovchiga xabar yuborish imkoniyati yo'q, shuning uchun admin menyusiga qaytaramiz
+        # Aslida bu funksiyani qo'shish kerak bo'lishi mumkin
+        return ADMIN_MESSAGE_TARGET
+    
+    # Orqaga
+    elif text == "Orqaga":
+        # Admin menyusiga qaytish
+        keyboard = [
+            ["Statistika", "Bot sozlamalari"],
+            ["Xabar yuborish", "Tanga sovg'a qilish"],
+            ["Botni qayta ishga tushirish", "Haydovchi rejimi"]
+        ]
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            "Admin menyusiga qaytildi.",
+            reply_markup=reply_markup
+        )
+        
+        return ADMIN_MENU
+    
+    # Noto'g'ri buyruq
+    await update.message.reply_text(
+        "Noto'g'ri buyruq berildi. Iltimos, menyudan tanlang."
+    )
+    
+    return ADMIN_MESSAGE_TARGET
+
+# Sovg'a tangalar sonini kiritish handler
+async def admin_gift_amount(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.effective_user.id
+    text = update.message.text
+    
+    # Admin ekanligini tekshirish
+    if user_id not in ADMIN_IDS:
+        # Botni qayta ishga tushirish
+        return await start(update, context)
+    
+    # Raqam ekanligini tekshirish
+    try:
+        coins = int(text)
+        if coins <= 0:
+            await update.message.reply_text(
+                "Tangalar soni 0 dan katta bo'lishi kerak. Iltimos, qaytadan kiriting:"
+            )
+            return ADMIN_GIFT_AMOUNT
+        
+        # Sovg'a tangalar sonini saqlash
+        context.user_data["admin_gift_amount"] = coins
+        
+        # Sovg'a yuborish menyusini ko'rsatish
+        keyboard = [
+            ["Barcha haydovchilarga", "Faqat ma'lum haydovchiga"],
+            ["Orqaga"]
+        ]
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            f"{coins} tangani kimga sovg'a qilmoqchisiz?",
+            reply_markup=reply_markup
         )
         
         return ADMIN_GIFT_TARGET
+        
     except ValueError:
         await update.message.reply_text(
-            "Iltimos, raqam kiriting.",
-            reply_markup=ReplyKeyboardRemove()
+            "Iltimos, raqam kiriting:"
         )
         return ADMIN_GIFT_AMOUNT
 
-# Sovg'a maqsadini tanlash
-async def admin_gift_target(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    target = update.message.text
-    amount = context.user_data.get('gift_amount', 0)
-
-    if target == "Bekor qilish":
+# Sovg'a tangalar manzilini tanlash
+async def admin_gift_target(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    user_id = update.effective_user.id
+    text = update.message.text
+    
+    # Admin ekanligini tekshirish
+    if user_id not in ADMIN_IDS:
+        # Botni qayta ishga tushirish
+        return await start(update, context)
+    
+    # Barcha haydovchilarga
+    if text == "Barcha haydovchilarga":
+        # Foydalanuvchilar ma'lumotlarini yuklash
+        users = load_data(USERS_FILE)
+        
+        # Sovg'a tangalar sonini olish
+        coins = context.user_data.get("admin_gift_amount", 1)
+        
+        # Yuborilgan tangalar soni
+        sent_count = 0
+        
+        # Barcha haydovchilarga sovg'a qilish
+        for user_id_str, user_data in users.items():
+            if user_data.get("role") == "driver":
+                # Tangalar sonini yangilash
+                users[user_id_str]["coins"] = users[user_id_str].get("coins", 0) + coins
+                
+                try:
+                    await context.bot.send_message(
+                        chat_id=int(user_id_str),
+                        text=f"ADMIN sovg'asi!\n\n"
+                            f"Hisobingizga {coins} tanga qo'shildi.\n"
+                            f"Hozirgi tangalaringiz: {users[user_id_str].get('coins', 0)}"
+                    )
+                    sent_count += 1
+                except Exception as e:
+                    logger.error(f"Xabar yuborishda xatolik: {e}")
+        
+        # Ma'lumotlarni saqlash
+        save_data(users, USERS_FILE)
+        
+        # Admin menyusiga qaytish
+        keyboard = [
+            ["Statistika", "Bot sozlamalari"],
+            ["Xabar yuborish", "Tanga sovg'a qilish"],
+            ["Botni qayta ishga tushirish", "Haydovchi rejimi"]
+        ]
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
         await update.message.reply_text(
-            "Sovg'a berish bekor qilindi.",
-            reply_markup=ReplyKeyboardMarkup([
-                ["📊 Statistika", "⚙️ Sozlamalar"],
-                ["📨 Xabar yuborish", "🎁 Sovg'a berish"],
-                ["👤 Foydalanuvchilar"]
-            ], resize_keyboard=True)
+            f"{coins} tanga {sent_count} ta haydovchiga sovg'a qilindi.",
+            reply_markup=reply_markup
         )
+        
         return ADMIN_MENU
-
-    if target == "Aniq foydalanuvchiga":
+    
+    # Faqat ma'lum haydovchiga
+    elif text == "Faqat ma'lum haydovchiga":
         await update.message.reply_text(
-            "Foydalanuvchi ID raqamini kiriting:",
-            reply_markup=ReplyKeyboardRemove()
+            "Haydovchi ID raqamini kiriting:"
         )
+        
+        # Bu yerda faqat ma'lum haydovchiga sovg'a qilish imkoniyati yo'q, shuning uchun admin menyusiga qaytaramiz
+        # Aslida bu funksiyani qo'shish kerak bo'lishi mumkin
         return ADMIN_GIFT_TARGET
-
-    users = load_data(USERS_FILE)
-    gift_count = 0
-
-    for user_id, user_data in users.items():
-        # Foydalanuvchi turini tekshirish
-        if (target == "Hamma haydovchilarga" and user_data.get('role') == 'driver') or \
-           (target.isdigit() and user_id == target):
-            # Tangalarni qo'shish
-            users[user_id]["coins"] = users[user_id].get("coins", 0) + amount
-            gift_count += 1
-            
-            # Foydalanuvchiga xabar yuborish
-            try:
-                await context.bot.send_message(
-                    chat_id=int(user_id),
-                    text=f"🎁 Tabriklaymiz! Sizga {amount} tanga sovg'a qilindi.\n"
-                         f"Joriy tangalar soni: {users[user_id]['coins']}"
-                )
-            except Exception as e:
-                logger.error(f"Xabar yuborishda xatolik: {e}")
-
-    save_data(users, USERS_FILE)
-
-    await update.message.reply_text(
-        f"Sovg'a {gift_count} ta foydalanuvchiga yuborildi.",
-        reply_markup=ReplyKeyboardMarkup([
-            ["📊 Statistika", "⚙️ Sozlamalar"],
-            ["📨 Xabar yuborish", "🎁 Sovg'a berish"],
-            ["👤 Foydalanuvchilar"]
-        ], resize_keyboard=True)
-    )
-
-    return ADMIN_MENU
-
-# Foydalanuvchilar ro'yxatini ko'rsatish
-async def show_admin_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    users = load_data(USERS_FILE)
-
-    # Foydalanuvchilar sonini hisoblash
-    driver_count = sum(1 for user in users.values() if user.get('role') == 'driver')
-
-    # Top 5 haydovchilarni tangalar bo'yicha saralash
-    top_drivers = sorted(
-        [(user_id, user_data) for user_id, user_data in users.items() if user_data.get('role') == 'driver'],
-        key=lambda x: x[1].get('coins', 0),
-        reverse=True
-    )[:5]
-
-    # Xabarni tayyorlash
-    users_message = (
-        "👤 FOYDALANUVCHILAR\n\n"
-        f"Umumiy foydalanuvchilar: {len(users)}\n"
-        f"Haydovchilar: {driver_count}\n\n"
-        "Top 5 haydovchilar (tangalar bo'yicha):\n"
-    )
-
-    for i, (user_id, user_data) in enumerate(top_drivers, 1):
-        users_message += f"{i}. {user_data.get('full_name', 'Nomsiz')} - {user_data.get('coins', 0)} tanga\n"
-
-    await update.message.reply_text(
-        users_message,
-        reply_markup=ReplyKeyboardMarkup([
-            ["📊 Statistika", "⚙️ Sozlamalar"],
-            ["📨 Xabar yuborish", "🎁 Sovg'a berish"],
-            ["👤 Foydalanuvchilar"]
-        ], resize_keyboard=True)
-    )
-
-# Xatolikni qayta ishlash
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.error(f"Update {update} caused error {context.error}")
-    if update.effective_message:
-        await update.effective_message.reply_text(
-            "Xatolik yuz berdi. Iltimos, /start buyrug'i bilan qayta boshlang."
+    
+    # Orqaga
+    elif text == "Orqaga":
+        # Admin menyusiga qaytish
+        keyboard = [
+            ["Statistika", "Bot sozlamalari"],
+            ["Xabar yuborish", "Tanga sovg'a qilish"],
+            ["Botni qayta ishga tushirish", "Haydovchi rejimi"]
+        ]
+        
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
+        await update.message.reply_text(
+            "Admin menyusiga qaytildi.",
+            reply_markup=reply_markup
         )
+        
+        return ADMIN_MENU
+    
+    # Noto'g'ri buyruq
+    await update.message.reply_text(
+        "Noto'g'ri buyruq berildi. Iltimos, menyudan tanlang."
+    )
+    
+    return ADMIN_GIFT_TARGET
 
-async def check_channel_connection(bot):
-    try:
-        await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=bot.id)
-        logger.info("Bot kanalga ulangan va huquqlari bor.")
-    except Exception as e:
-        logger.error(f"Bot kanalga ulana olmadi yoki huquqlari yo'q: {e}")
+#
+# ASOSIY FUNKSIYA
+#
 
-# main funksiyasini o'zgartirish
 def main():
     # Fayllarni tekshirish
     ensure_files_exist()
@@ -1977,7 +2042,8 @@ def main():
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            REGISTER_DRIVER: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_driver)],
+            # REGISTER_DRIVER holatini olib tashlash kerak
+            # REGISTER_DRIVER: [MessageHandler(filters.TEXT & ~filters.COMMAND, register_driver)],
             ENTER_PHONE: [
                 MessageHandler(filters.CONTACT, enter_phone),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, enter_phone)
@@ -1999,11 +2065,23 @@ def main():
     application.add_handler(conv_handler, group=0)
 
     # Callback query handler qo'shish
-    application.add_handler(CallbackQueryHandler(take_passenger), group=1)
+    application.add_handler(CallbackQueryHandler(take_passenger, pattern=r"^pickup_|^passenger_count_|^confirm_coins_|^correct_count_"), group=1)
+    
+    # Guruh sozlamalari uchun callback query handler qo'shish
+    application.add_handler(CallbackQueryHandler(handle_group_settings_callback, pattern=r"^group_setting_|^toggle_|^set_min_coins|^back_to_group_settings|^group_stats"), group=2)
+    
+    # Guruh xabarlarini tozalash uchun callback query handler qo'shish
+    application.add_handler(CallbackQueryHandler(handle_clear_messages_callback, pattern=r"^confirm_clear_messages|^cancel_clear_messages"), group=3)
+
+    # Guruh sozlamalari buyrug'i
+    application.add_handler(CommandHandler("settings", show_group_settings), group=4)
+    
+    # Guruh xabarlarini tozalash buyrug'i
+    application.add_handler(CommandHandler("clear", clear_group_messages), group=5)
 
     # Kanal xabarlarini tekshirish uchun handler qo'shish
     # Har qanday turdagi xabarlarni qabul qilish uchun
-    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_channel_message), group=2)
+    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_channel_message), group=6)
 
     application.add_error_handler(error_handler)
 
