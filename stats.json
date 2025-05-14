@@ -1,12 +1,6 @@
 {
-    "2025-05-10": {
-        "new_drivers": 15,
-        "new_offers": 10,
-        "fake_offers": 1
-    },
-    "total": {
-        "new_drivers": 15,
-        "new_offers": 10,
-        "fake_offers": 1
-    }
+    "total_rides": 205,
+    "total_coins": 41,
+    "users_count": 63,
+    "last_reset": null
 }

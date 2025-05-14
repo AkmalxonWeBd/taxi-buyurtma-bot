@@ -1,137 +1,463 @@
 {
-    "8197347743": {
-        "role": "driver",
-        "coins": 5,
-        "full_name": "Akmalxon",
-        "phone": "+998958793732"
-    },
-    "703074858": {
-        "role": "driver",
-        "coins": 5,
-        "full_name": "Орифжон",
-        "phone": "+998932666262"
-    },
-    "7658550761": {
-        "role": "driver_pending",
-        "coins": 5,
-        "full_name": "Muhammad",
-        "phone": ""
-    },
-    "799615045": {
-        "role": "driver",
-        "coins": 4,
-        "full_name": "Atham",
-        "phone": "+998913671143"
-    },
-    "1864485398": {
-        "role": "driver",
-        "coins": 5,
-        "full_name": "Sobitxon",
-        "phone": "+998972595599"
-    },
-    "5290226708": {
-        "role": "driver",
-        "coins": 5,
-        "full_name": "Махмуд",
-        "phone": ""
-    },
     "7578618626": {
-        "role": "driver",
-        "coins": 5,
-        "full_name": "Akmalxon",
-        "phone": ""
+        "name": "Akmalxon",
+        "username": "A_I_L_Uz",
+        "phone": "+998906980021",
+        "coins": -3
     },
-    "239841259": {
-        "role": "driver",
-        "coins": 5,
-        "full_name": "БОТИРЖОН",
-        "phone": "+998945033383"
-    },
-    "6711915733": {
-        "role": "driver",
-        "coins": 5,
-        "full_name": "AnAsXoN_15 15",
-        "phone": "332211515"
-    },
-    "1670534669": {
-        "role": "driver",
-        "coins": 5,
-        "full_name": "Majidov Abdurashid",
-        "phone": "+998931500004"
-    },
-    "6763539363": {
-        "role": "driver_pending",
-        "coins": 5,
-        "full_name": "Haydovchi sifatida ro'yxatdan o'tish"
-    },
-    "174712721": {
-        "role": "driver",
-        "coins": 5,
-        "full_name": "Аюбхон +998902755772",
-        "phone": ""
-    },
-    "5184383282": {
-        "role": "driver_pending",
-        "coins": 5,
-        "full_name": "Адхам",
-        "phone": ""
-    },
-    "909551315": {
-        "role": "driver",
-        "coins": 5,
-        "full_name": "Rustam",
-        "phone": ""
-    },
-    "100799638": {
-        "role": "driver",
-        "coins": 5,
-        "full_name": "Lutfillo",
-        "phone": "+998934004320"
-    },
-    "5192980075": {
-        "role": "driver",
-        "coins": 5,
-        "full_name": "АНВАРЖОН 936770055",
-        "phone": "+998936770055"
-    },
-    "848272398": {
-        "role": "driver",
-        "coins": 5,
-        "full_name": "Haydovchi sifatida ro'yxatdan o'tish",
-        "phone": "+998933510007"
-    },
-    "985173907": {
-        "role": "driver_pending",
-        "coins": 5,
-        "full_name": "Haydovchi sifatida ro'yxatdan o'tish"
-    },
-    "1707195733": {
-        "role": "driver_pending",
-        "coins": 5,
-        "full_name": "MUSOXON",
-        "phone": ""
-    },
-    "368464003": {
-        "role": "driver_pending",
-        "coins": 5,
-        "full_name": "Saydullo 97 552 66 66",
-        "phone": ""
+    "37846745": {
+        "name": ". Mahmudjon 94 2748338",
+        "username": "Mahmudjon8338",
+        "phone": "998942748338",
+        "coins": 11,
+        "joined_date": "2025-05-11 08:00:55"
     },
     "1451298305": {
-        "role": "driver_pending",
-        "coins": 5,
-        "full_name": "@@АКРАМЖОН@@",
-        "phone": ""
+        "name": "@@АКРАМЖОН@@",
+        "username": "moysam345",
+        "phone": "998937103131",
+        "coins": 10,
+        "joined_date": "2025-05-11 08:10:39"
+    },
+    "129903115": {
+        "name": "𝑼𝒍𝒖𝒈'𝒃𝒆𝒌 𝑶𝒃𝒊𝒅𝒐𝒗",
+        "username": "UlugbekObidov",
+        "phone": "998943777677",
+        "coins": 11,
+        "joined_date": "2025-05-11 08:18:32"
+    },
+    "53542518": {
+        "name": "Умархон +998947220501",
+        "username": "",
+        "phone": "998913473322",
+        "coins": 10,
+        "joined_date": "2025-05-11 08:19:51"
+    },
+    "793421751": {
+        "name": "ORIFJON 93 675 32 22 ___",
+        "username": "orifjon6565",
+        "phone": "998941736565",
+        "coins": 10,
+        "joined_date": "2025-05-11 08:20:32"
+    },
+    "8197347743": {
+        "name": "Akmalxon",
+        "username": "Uzfoyda11111",
+        "phone": "998958793732",
+        "coins": 14,
+        "joined_date": "2025-05-11 08:21:49"
+    },
+    "315182021": {
+        "name": "АЮБХОН 6401714",
+        "username": "",
+        "phone": "998906401714",
+        "coins": 8,
+        "joined_date": "2025-05-11 08:26:28"
+    },
+    "5135842960": {
+        "name": "Мансур",
+        "username": "mansurbek0080",
+        "phone": "998930510080",
+        "coins": 11,
+        "joined_date": "2025-05-11 08:26:37"
+    },
+    "239841259": {
+        "name": "БОТИРЖОН",
+        "username": "",
+        "phone": "998945033383",
+        "coins": 11,
+        "joined_date": "2025-05-11 08:27:53"
+    },
+    "5527539086": {
+        "name": "Obidxon",
+        "username": "",
+        "phone": "998939150474",
+        "coins": 12,
+        "joined_date": "2025-05-11 08:28:24"
+    },
+    "5184383282": {
+        "name": "Адхам Баннаев",
+        "username": "",
+        "phone": "998943515577",
+        "coins": 8,
+        "joined_date": "2025-05-11 08:37:54"
+    },
+    "1615595646": {
+        "name": "B E K Z O D",
+        "username": "pltkgt",
+        "phone": "998938006864",
+        "coins": 11,
+        "joined_date": "2025-05-11 08:40:31"
+    },
+    "1484006041": {
+        "name": "Akmalxon",
+        "username": "Akmalxon85",
+        "phone": "998993624222",
+        "coins": 9,
+        "joined_date": "2025-05-11 08:58:49"
+    },
+    "249850139": {
+        "name": "Аскар",
+        "username": "sanni252",
+        "phone": "998934002014",
+        "coins": 10,
+        "joined_date": "2025-05-11 08:55:19"
+    },
+    "7594563": {
+        "name": "Isroil 9️⃣3️⃣9️⃣1️⃣1️⃣7️⃣7️⃣7️⃣6️⃣",
+        "username": "",
+        "phone": "998939117776",
+        "coins": 14,
+        "joined_date": "2025-05-11 09:01:26"
+    },
+    "1095752394": {
+        "name": "Маьруфжон",
+        "username": "",
+        "phone": "998913439415",
+        "coins": 9,
+        "joined_date": "2025-05-11 09:08:01"
+    },
+    "719285321": {
+        "name": "Джалалов Мухторжон",
+        "username": "",
+        "phone": "998943074704",
+        "coins": 8,
+        "joined_date": "2025-05-11 09:08:01"
+    },
+    "77969657": {
+        "name": "Dovudxon Muxammadov",
+        "username": "sanni252",
+        "phone": "998942520050",
+        "coins": 11,
+        "joined_date": "2025-05-11 09:08:01"
+    },
+    "875475409": {
+        "name": "Хайрулло",
+        "username": "Xayyrullo",
+        "phone": "998939158081",
+        "coins": 10,
+        "joined_date": "2025-05-11 09:25:19"
+    },
+    "909551315": {
+        "name": "Rustam 💪",
+        "username": "",
+        "phone": "998906943232",
+        "coins": 13,
+        "joined_date": "2025-05-11 09:28:47"
+    },
+    "1830371238": {
+        "name": "Komil",
+        "username": "Ziyovuddinov_komil",
+        "phone": "998882387070",
+        "coins": 6,
+        "joined_date": "2025-05-11 09:40:19"
+    },
+    "1228402385": {
+        "name": "Qosimxon",
+        "username": "",
+        "phone": "998930605207",
+        "coins": 10,
+        "joined_date": "2025-05-11 09:41:55"
+    },
+    "100799638": {
+        "name": "꧁ Lutfillo ꧂",
+        "username": "Lutfillo11",
+        "phone": "998934004320",
+        "coins": 10,
+        "joined_date": "2025-05-11 09:42:52"
+    },
+    "258612322": {
+        "name": "Абдукодир",
+        "username": "",
+        "phone": "998941566626",
+        "coins": 10,
+        "joined_date": "2025-05-11 09:47:22"
+    },
+    "138079104": {
+        "name": "ИСОКЖОН",
+        "username": "",
+        "phone": "998945027766",
+        "coins": 10,
+        "joined_date": "2025-05-11 10:01:23"
     },
     "550487251": {
-        "role": "driver_pending",
-        "coins": 5,
-        "full_name": "Haydovchi sifatida ro'yxatdan o'tish"
+        "name": "MuxsinBoy",
+        "username": "",
+        "phone": "998973724747",
+        "coins": 9,
+        "joined_date": "2025-05-11 10:13:50"
+    },
+    "1151208336": {
+        "name": "Авазбек",
+        "username": "",
+        "phone": "998936710605",
+        "coins": 6,
+        "joined_date": "2025-05-11 10:14:37"
+    },
+    "6806872800": {
+        "name": "Anvar",
+        "username": "",
+        "phone": "998947820020",
+        "coins": 11,
+        "joined_date": "2025-05-11 10:49:02"
+    },
+    "6711915733": {
+        "name": "AnAsXoN_15 15",
+        "username": "AnAsXon1515",
+        "phone": "998332211515",
+        "coins": 14,
+        "joined_date": "2025-05-11 10:49:47"
     },
     "164210882": {
-        "role": "driver",
-        "coins": 5,
-        "full_name": "Haydovchi sifatida ro'yxatdan o'tish",
-        "phone": "+998902790444"
+        "name": "БАХРОМЖОН",
+        "username": "",
+        "phone": "998902790444",
+        "coins": 10,
+        "joined_date": "2025-05-11 11:04:52"
+    },
+    "47188794": {
+        "name": "Отабек Ходжие",
+        "username": "",
+        "phone": "998902752090",
+        "coins": 10,
+        "joined_date": "2025-05-11 11:18:44"
+    },
+    "703074858": {
+        "name": "Орифжон",
+        "username": "Orifjon_6262",
+        "phone": "998932666262",
+        "coins": 10,
+        "joined_date": "2025-05-11 11:23:05"
+    },
+    "539993575": {
+        "name": "Илхомжон 93.400.13.82",
+        "username": "",
+        "phone": "998934001382",
+        "coins": 10,
+        "joined_date": "2025-05-11 11:23:05"
+    },
+    "1130782119": {
+        "name": "Акмалжон",
+        "username": "",
+        "phone": "998936780822",
+        "coins": 12,
+        "joined_date": "2025-05-11 11:23:05"
+    },
+    "5192980075": {
+        "name": "АНВАРЖОН 936770055",
+        "username": "Anvar496Lasett1984",
+        "phone": "998883740055",
+        "coins": 16,
+        "joined_date": "2025-05-11 11:48:51"
+    },
+    "940330731": {
+        "name": "АБДУЛХАМИД",
+        "username": "Toshkent420",
+        "phone": "998913461005",
+        "coins": 10,
+        "joined_date": "2025-05-11 12:11:14"
+    },
+    "5290226708": {
+        "name": "Махмуд",
+        "username": "",
+        "phone": "998995159559",
+        "coins": 10,
+        "joined_date": "2025-05-11 12:52:27"
+    },
+    "985173907": {
+        "name": "ИСРОИЛЖОН",
+        "username": "",
+        "phone": "998905982244",
+        "coins": 15,
+        "joined_date": "2025-05-11 12:57:07"
+    },
+    "848272398": {
+        "name": "MAQSUDBEK",
+        "username": "maqsudyunusov0007",
+        "phone": "998933510007",
+        "coins": 10,
+        "joined_date": "2025-05-11 13:21:30"
+    },
+    "801098291": {
+        "name": "﷽Aใhล๓dนใเใใลh﷽",
+        "username": "",
+        "phone": "998941760330",
+        "coins": 9,
+        "joined_date": "2025-05-11 16:40:40"
+    },
+    "5280184044": {
+        "name": "Мухаммадамин Акрамов",
+        "username": "",
+        "phone": "998950964107",
+        "coins": 10,
+        "joined_date": "2025-05-11 16:40:40"
+    },
+    "799615045": {
+        "name": "《_Atxam_》",
+        "username": "",
+        "phone": "998913671143",
+        "coins": 9,
+        "joined_date": "2025-05-12 05:20:26"
+    },
+    "393444640": {
+        "name": "Kxalilov",
+        "username": "",
+        "phone": "998913618595",
+        "coins": 12,
+        "joined_date": "2025-05-12 09:04:09"
+    },
+    "163524369": {
+        "name": "Илхом Каххаров",
+        "username": "Lochin_1250",
+        "phone": "998936740080",
+        "coins": 11,
+        "joined_date": "2025-05-12 09:13:58"
+    },
+    "116377369": {
+        "name": "Насим",
+        "username": "",
+        "phone": "998942741710",
+        "coins": 10,
+        "joined_date": "2025-05-12 09:29:30"
+    },
+    "719676965": {
+        "name": "ULUGBEK",
+        "username": "",
+        "phone": "998973713030",
+        "coins": 10,
+        "joined_date": "2025-05-12 09:52:45"
+    },
+    "174712721": {
+        "name": "Аюбхон +998902755772",
+        "username": "",
+        "phone": "998902755772",
+        "coins": 10,
+        "joined_date": "2025-05-12 10:00:35"
+    },
+    "840491937": {
+        "name": "Каримжон",
+        "username": "",
+        "phone": "998942724555",
+        "coins": 10,
+        "joined_date": "2025-05-12 10:25:15"
+    },
+    "1122070336": {
+        "name": "Акбар",
+        "username": "",
+        "phone": "998931924545",
+        "coins": 10,
+        "joined_date": "2025-05-12 11:11:59"
+    },
+    "7658550761": {
+        "name": "Muhammad",
+        "username": "",
+        "phone": "998200002050",
+        "coins": 10,
+        "joined_date": "2025-05-12 12:09:43"
+    },
+    "1707195733": {
+        "name": "MUSOXON",
+        "username": "",
+        "phone": "998939444106",
+        "coins": 10,
+        "joined_date": "2025-05-12 12:45:33"
+    },
+    "508615921": {
+        "name": "Авазхон 93 4941775",
+        "username": "",
+        "phone": "998934941775",
+        "coins": 10,
+        "joined_date": "2025-05-12 13:34:40"
+    },
+    "6255528387": {
+        "name": "Юнусхон 942780043",
+        "username": "",
+        "phone": "998996160082",
+        "coins": 8,
+        "joined_date": "2025-05-12 14:09:11"
+    },
+    "1670534669": {
+        "name": "Abdurashid",
+        "username": "",
+        "phone": "998931500004",
+        "coins": 11,
+        "joined_date": "2025-05-12 14:20:07"
+    },
+    "799059928": {
+        "name": "Samihon",
+        "username": "",
+        "phone": "998972575252",
+        "coins": 10,
+        "joined_date": "2025-05-12 17:30:22"
+    },
+    "6763539363": {
+        "name": "Ali",
+        "username": "Ali888264848makler",
+        "phone": "998888264848",
+        "coins": 9,
+        "joined_date": "2025-05-12 17:44:12"
+    },
+    "1864485398": {
+        "name": "Собитхон",
+        "username": "",
+        "phone": "998972595599",
+        "coins": 8,
+        "joined_date": "2025-05-13 07:51:16"
+    },
+    "668246441": {
+        "name": "Ravshan",
+        "username": "",
+        "phone": "998939497151",
+        "coins": 11,
+        "joined_date": "2025-05-14 08:33:44"
+    },
+    "1573614618": {
+        "name": "936301898",
+        "username": "",
+        "phone": "998936301898",
+        "coins": 10,
+        "joined_date": "2025-05-13 10:21:44"
+    },
+    "6788039949": {
+        "name": "𝕝𝕩𝕏𝕩𝕝",
+        "username": "lxXxl5910",
+        "phone": "998933575910",
+        "coins": 0,
+        "joined_date": "2025-05-13 10:23:33"
+    },
+    "6436110668": {
+        "name": "Rasul",
+        "username": "",
+        "phone": "998902190401",
+        "coins": 11,
+        "joined_date": "2025-05-13 13:38:26"
+    },
+    "392330079": {
+        "name": "Боходир",
+        "username": "",
+        "phone": "998942720201",
+        "coins": 10,
+        "joined_date": "2025-05-13 21:32:36"
+    },
+    "203176593": {
+        "name": "Akmal",
+        "username": "Toshkent_namanganl",
+        "phone": "998905551417",
+        "coins": 10,
+        "joined_date": "2025-05-14 09:42:15"
+    },
+    "732084027": {
+        "name": "Qobiljon",
+        "username": "",
+        "phone": "998939497070",
+        "coins": 10,
+        "joined_date": "2025-05-14 10:16:33"
+    },
+    "6465075006": {
+        "name": "ABDURAXMON",
+        "username": "Xojixanov7",
+        "phone": "998913480000",
+        "coins": 10,
+        "joined_date": "2025-05-14 14:49:30"
     }
 }
