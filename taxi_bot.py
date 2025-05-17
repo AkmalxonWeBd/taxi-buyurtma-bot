@@ -996,7 +996,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 balance_message = f"Qolgan tangalaringiz: {current_balance}"
                 
                 if current_balance < 0:
-                    balance_message += "\n⚠️ Sizning hisobingiz manfiy holatga tushdi. Yangi takliflarni olish uchun avval hisobingizni to'ldiring."
+                    balance_message += "\n⚠️ Sizning hisobingiz manfiy holatga tushdi. Yangi takliflarni olish uchun avval hisobingizni ijobiy holatga keltiring."
                 
                 await query.edit_message_text(
                     text=f"Siz {count} ta yo'lovchini oldingiz va {count} tanga to'ladingiz.\n{balance_message}"
@@ -1363,7 +1363,7 @@ async def handle_message_confirm(update: Update, context: ContextTypes.DEFAULT_T
     logger.info(f"User data: {context.user_data}")
     
     # Agar bu tanga sovg'a qilish tasdiqlash bo'lsa
-    if "gift_target" in context.user_data and "gift_amount" in context.user_data:
+    if "gift_target" in context.user_data and "gift_amount" in context.user_data and not "msg_target" in context.user_data:
         return await handle_gift_confirm(update, context)
     
     if text == "✅ Tasdiqlash":
@@ -1408,6 +1408,14 @@ async def handle_message_confirm(update: Update, context: ContextTypes.DEFAULT_T
                 )
         
         # Admin panelga qaytish
+        # Clear message-related data to prevent interference with future operations
+        if "msg_target" in context.user_data:
+            del context.user_data["msg_target"]
+        if "message_text" in context.user_data:
+            del context.user_data["message_text"]
+        if "target_id" in context.user_data:
+            del context.user_data["target_id"]
+        
         return await admin(update, context)
     
     elif text == "❌ Bekor qilish":
@@ -1535,6 +1543,14 @@ async def handle_gift_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE
                 )
         
         # Admin panelga qaytish
+        # Clear gift-related data to prevent interference with future operations
+        if "gift_target" in context.user_data:
+            del context.user_data["gift_target"]
+        if "gift_amount" in context.user_data:
+            del context.user_data["gift_amount"]
+        if "gift_user_id" in context.user_data:
+            del context.user_data["gift_user_id"]
+        
         return await admin(update, context)
     
     elif text == "❌ Bekor qilish":
