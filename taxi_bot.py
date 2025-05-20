@@ -243,6 +243,47 @@ async def handle_voice_reply(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if str(replied_msg_id) in offers and offers[str(replied_msg_id)]["status"] == "active":
             # Taklifni olish jarayonini boshlash
             await process_claim(update, context, replied_msg_id)
+            
+async def remind_oldim_olmadim(context, offer_id, user_id):
+    global pending_confirmations
+    offer_id = str(offer_id)
+    offers = load_offers()
+    reply_msg_id = None
+    if offer_id in offers:
+        reply_msg_id = offers[offer_id].get("reminder_message_id")
+    while offer_id in pending_confirmations:
+        await asyncio.sleep(2)
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="Iltimos, agar siz bu yo'lovchini olgan bo‘lsangiz, “Oldim” tugmasini bosing, olmagan bo‘lsangiz “Olmadim” tugmasini bosing.",
+                reply_to_message_id=reply_msg_id
+            )
+        except Exception as e:
+            logger.error(f"Eslatma yuborishda xatolik: {e}")
+            break
+
+
+async def remind_count_selection(context, offer_id, user_id):
+    global pending_counts
+    offer_id = str(offer_id)
+    offers = load_offers()
+    reply_msg_id = None
+    if offer_id in offers:
+        reply_msg_id = offers[offer_id].get("reminder_message_id")
+    while offer_id in pending_counts:
+        await asyncio.sleep(3)
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="Iltimos, nechta odam ekanligini tanlang.",
+                reply_to_message_id=reply_msg_id
+            )
+        except Exception as e:
+            logger.error(f"Soni eslatmasida xatolik: {e}")
+            break
+
+
 
 # Matnli xabarlarni qayta ishlash
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -340,69 +381,88 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 # 5 daqiqa kutish va taklif o'chirilishi
 async def check_offer_timeout(context, message_id):
-    await asyncio.sleep(300)  # 5 daqiqa (300 soniya) kutish
-    
-    # Takliflar ma'lumotlarini yuklash
+    await asyncio.sleep(10)  # 5 daqiqa
+
     offers = load_offers()
     offer_id = str(message_id)
-    
-    # Agar taklif hali ham mavjud va olinmagan bo'lsa
-    if offer_id in offers and offers[offer_id]["status"] == "active":
-        offer = offers[offer_id]
-        
-        # Xabarni o'chirish
+
+    if offer_id not in offers:
+        return
+
+    offer = offers[offer_id]
+
+    if offer["status"] != "active":
+        return
+
+    resend_count = offer.get("resend_count", 0)
+
+    if resend_count >= 3:
+        # 3-marta yuborilganidan 10 daqiqa o‘tganini tekshirish
+        last_sent = datetime.fromisoformat(offer.get("last_sent", datetime.now().isoformat()))
+        if (datetime.now() - last_sent).total_seconds() >= 5:
+            try:
+                await context.bot.delete_message(chat_id=offer["chat_id"], message_id=message_id)
+            except:
+                pass
+            del offers[offer_id]
+            save_offers(offers)
+        else:
+            # 10 daqiqa to‘lmagan bo‘lsa yana kutish
+            context.application.create_task(check_offer_timeout(context, message_id))
+        return
+
+   # Taklifni avtomatik qayta yuborish
+    try:
+        # 🔴 YANGI: Eski xabarni o‘chiramiz
         try:
             await context.bot.delete_message(chat_id=offer["chat_id"], message_id=message_id)
         except Exception as e:
-            logger.error(f"Xabarni o'chirishda xatolik: {e}")
-        
-        # Taklifni avtomatik qayta yuborish
-        try:
-            # O'chirish tugmasi bilan ovozli xabarni qayta yuborish
-            keyboard = [
-                [InlineKeyboardButton("O'chirish", callback_data=f"delete_offer")]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            sent_message = await context.bot.send_voice(
-                chat_id=offer["chat_id"],
-                voice=offer["voice_file_id"],
-                caption=f"Yangi yo'lovchilar taklifi\nsoni: aniq emas\nqayerdan: aniq emas\nKim yubordi: {offer['sender_name']} {('@' + offer['sender_username']) if offer['sender_username'] else ''}\n\nushbu yo'lovchini olish uchun yuqoridagi ovozli habarga reply qilib \"olaman\" deb yozing yoki ovozli habar yuboring",
-                reply_markup=reply_markup
-            )
-            
-            # Yangi taklifni saqlash
-            new_offer_id = str(sent_message.message_id)
-            offers[new_offer_id] = {
-                "chat_id": offer["chat_id"],
-                "message_id": sent_message.message_id,
-                "voice_file_id": offer["voice_file_id"],
-                "phone_number": offer["phone_number"],
-                "sender_name": offer["sender_name"],
-                "sender_id": offer["sender_id"],
-                "sender_username": offer["sender_username"],
-                "status": "active",
-                "created_at": datetime.now().isoformat()
-            }
-            
-            # Eski taklifni o'chirish
-            del offers[offer_id]
-            save_offers(offers)
-            
-            # 5 daqiqadan keyin tekshirish uchun task yaratish
-            context.application.create_task(check_offer_timeout(context, sent_message.message_id))
-            
-            # Taklif beruvchiga xabar yuborish
-            await context.bot.send_message(
-                chat_id=offer["sender_id"],
-                text=f"Sizning taklifingiz 5 daqiqa ichida hech kim olmadi. Taklif avtomatik ravishda qayta yuborildi."
-            )
-            
-        except Exception as e:
-            logger.error(f"Taklifni qayta yuborishda xatolik: {e}")
-            # Xatolik bo'lsa, taklifni o'chirib tashlash
-            del offers[offer_id]
-            save_offers(offers)
+            logger.error(f"Eski taklif xabarini o'chirishda xatolik: {e}")
+
+        keyboard = [
+            [InlineKeyboardButton("O'chirish", callback_data=f"delete_offer")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        caption = (
+            f"Yangi yo'lovchilar taklifi (❗️{resend_count + 1}-marta yuborilmoqda)\n"
+            f"soni: aniq emas\nqayerdan: aniq emas\n"
+            f"Kim yubordi: {offer['sender_name']} {('@' + offer['sender_username']) if offer['sender_username'] else ''}\n\n"
+            f"Ushbu yo'lovchini olish uchun yuqoridagi ovozli habarga reply qilib \"olaman\" deb yozing yoki ovozli habar yuboring"
+        )
+
+        # Yangi xabarni yuborish
+        sent_message = await context.bot.send_voice(
+            chat_id=offer["chat_id"],
+            voice=offer["voice_file_id"],
+            caption=caption,
+            reply_markup=reply_markup
+        )
+
+
+        new_offer_id = str(sent_message.message_id)
+        offers[new_offer_id] = {
+            **offer,
+            "message_id": sent_message.message_id,
+            "resend_count": resend_count + 1,
+            "last_sent": datetime.now().isoformat()
+        }
+
+        del offers[offer_id]
+        save_offers(offers)
+
+        context.application.create_task(check_offer_timeout(context, sent_message.message_id))
+
+        await context.bot.send_message(
+            chat_id=offer["sender_id"],
+            text=f"Sizning taklifingiz {resend_count + 1}-marta qayta yuborildi."
+        )
+
+    except Exception as e:
+        logger.error(f"Taklifni qayta yuborishda xatolik: {e}")
+        del offers[offer_id]
+        save_offers(offers)
+
 
 # Taklifni olish jarayoni
 async def process_claim(update: Update, context: ContextTypes.DEFAULT_TYPE, replied_msg_id: int) -> None:
@@ -456,12 +516,18 @@ async def process_claim(update: Update, context: ContextTypes.DEFAULT_TYPE, repl
             ]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await context.bot.send_message(
+
+        # Shaxsiy xabar yuboriladi va message_id saqlanadi
+        sent = await context.bot.send_message(
             chat_id=claimer_id,
             text=f"Siz yo'lovchi taklifini oldingiz\n\nsoni: aniq emas\nqayerdan: aniq emas\nkim yubordi: {('@' + offer['sender_username']) if offer['sender_username'] else offer['sender_name']}\ntelefon raqam: {offer['phone_number']}",
             reply_markup=reply_markup
         )
+        offers[offer_id]["reminder_message_id"] = sent.message_id
+        save_offers(offers)
+        pending_confirmations[str(replied_msg_id)] = claimer_id
+        context.application.create_task(remind_oldim_olmadim(context, str(replied_msg_id), claimer_id))
+
 
 # Foydalanuvchilarni ko'rsatish funksiyasi (sahifalash bilan)
 async def show_users_list(update: Update, context: ContextTypes.DEFAULT_TYPE, action_type: str, page: int = 0) -> int:
@@ -892,6 +958,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 reply_markup=reply_markup
             )
 
+            # TO‘G‘RILASH: pending_confirmations dan o‘chirish
+            if offer_id in pending_confirmations:
+                del pending_confirmations[offer_id]
+                logger.info(f"pending_confirmations dan {offer_id} o'chirildi (take_)")
+
+            pending_counts[offer_id] = user_id
+            context.application.create_task(remind_count_selection(context, offer_id, user_id))
+
     elif data.startswith("reject_"):
         # Taklifni rad etish
         msg_id = int(data.split("_")[1])
@@ -899,6 +973,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         # Takliflar ma'lumotlarini yuklash
         offers = load_offers()
         offer_id = str(msg_id)
+
+        # TO‘G‘RILASH: pending_confirmations dan o‘chirish
+        if offer_id in pending_confirmations:
+            del pending_confirmations[offer_id]
+            logger.info(f"pending_confirmations dan {offer_id} o'chirildi (reject_)")
 
         if offer_id in offers and offers[offer_id]["status"] == "waiting":
             offer = offers[offer_id]
@@ -970,12 +1049,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         # Yo'lovchilar sonini qayta ishlash
         parts = data.split("_")
         msg_id = int(parts[1])
+        offer_id = str(msg_id)
         count = int(parts[2])
         
         # Takliflar ma'lumotlarini yuklash
         offers = load_offers()
-        offer_id = str(msg_id)
-        
         if offer_id in offers and offers[offer_id]["status"] == "waiting":
             offer = offers[offer_id]
             
@@ -1023,6 +1101,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                         caption=f"Yangi yo'lovchilar taklifi\nsoni: {count}\nqayerdan: aniq emas\nKim yubordi: {offer['sender_name']} {('@' + offer['sender_username']) if offer['sender_username'] else ''}\n\nOlindi: {offer['claimer_name']} {('@' + offer['claimer_username']) if offer['claimer_username'] else ''}",
                         reply_markup=None  # O'chirish tugmasini olib tashlash
                     )
+                    
+                    if offer_id in pending_counts:
+                        del pending_counts[offer_id]
+
                 except Exception as e:
                     logger.error(f"Xabarni yangilashda xatolik: {e}")
             else:
@@ -1120,7 +1202,7 @@ async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     additional_message = ""
     if coins < 0:
         additional_message = "\n\n⚠️ Sizning hisobingiz manfiy holatda. Yangi takliflarni olish uchun avval hisobingizni ijobiy holatga keltiring."
-
+    
     await update.message.reply_text(
         f"Sizning hisobingizda {coins} tanga bor.{additional_message}"
     )
@@ -1354,6 +1436,8 @@ async def receive_message_text(update: Update, context: ContextTypes.DEFAULT_TYP
         f"{text}",
         reply_markup=reply_markup
     )
+
+    # Xabar yuborish holatini qaytarish
     return MESSAGE_CONFIRM
 
 # Xabarni yuborish tasdig'ini qayta ishlash
@@ -1559,13 +1643,16 @@ async def handle_gift_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     return MESSAGE_CONFIRM
 
+pending_confirmations = {}  # {offer_id: user_id}
+pending_counts = {}         # {offer_id: user_id}
+
 def main() -> None:
     """Botni ishga tushirish."""
     # JSON fayllarni tekshirish
     ensure_json_files()
     
     # Applicationni yaratish
-    application = Application.builder().token("7670097486:AAGo0jqQQThtSDCGbe6nlI74b5p6_PhPvdc").build()
+    application = Application.builder().token("7549779324:AAGCUWB8A__KXdIWhPcZnxz9SkY-iwh2nxc").build()
 
     # Admin panel uchun ConversationHandler
     admin_handler = ConversationHandler(
